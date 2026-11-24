@@ -6,8 +6,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "SHELTER_MANAGER");
-    const shelter = await prisma.shelter.findUnique({
-      where: { id },
+    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
+      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
+    }
+    const shelter = await prisma.shelter.findFirst({
+      where: {
+        id,
+        ...(user.role === "RELIEF_ORGANIZATION" ? { manager: { organizationId: user.organizationId } } : {}),
+      },
       include: { manager: { select: { id: true, name: true, email: true } }, occupancyLogs: { orderBy: { timestamp: "desc" } } },
     });
     if (!shelter) return NextResponse.json({ error: "Shelter not found" }, { status: 404 });

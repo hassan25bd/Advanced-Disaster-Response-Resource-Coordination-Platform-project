@@ -40,6 +40,7 @@ The rules below are enforced by the server where noted. External delivery integr
 2. System Admins see all organizations.
 3. Relief Organization accounts must be linked to an organization. Registration creates the organization and account in one transaction; previously unlinked accounts must complete authenticated organization setup before organization-scoped analytics and records are available.
 4. Emergency Coordinators manage authorized emergency operations.
+5. Relief Organization shelter lists, details, and shelter analytics are scoped to shelters managed by users in their organization; Shelter Managers only access their assigned shelters.
 
 ### Data Integrity
 - Allocation, shelter occupancy updates, and inventory adjustments use Prisma transactions.
@@ -57,6 +58,8 @@ The rules below are enforced by the server where noted. External delivery integr
 - 500 Resources
 
 Development seed accounts use password `ReliefGrid@2026` by default. Production seeding requires `SEED_PASSWORD`; do not use the development password in production.
+
+`prisma/seed-organization-demo.mts` adds a separate 50-incident, 100-request, 20-shelter, 100-volunteer, 500-resource dataset, plus teams, tasks, and allocations, to one explicitly selected organization. Run it with `--dry-run` first and `--apply` only after verifying the target database and organization. It is additive and blocks repeat or partial runs; generated synthetic user accounts receive random, undisclosed password hashes and are profile records, not demo logins.
 
 ## Remaining Implementation Gaps
 

@@ -56,6 +56,7 @@ src/
 prisma/
   schema.prisma           # full data model
   seed.ts                 # sample data generator
+  seed-organization-demo.mts # additive, organization-scoped sample data
 ```
 
 ## Getting Started
@@ -84,6 +85,13 @@ For production, configure both variables in the hosting provider. Use a strong r
 npx prisma db push          # create tables from schema
 npx tsx prisma/seed.ts      # load sample data (password: ReliefGrid@2026)
 ```
+
+To add a separate sample dataset to one existing organization, set `DATABASE_URL` to the intended database and run the explicit organization ID through a dry run before applying:
+```bash
+npx --yes tsx prisma/seed-organization-demo.mts <organization-id> --dry-run
+npx --yes tsx prisma/seed-organization-demo.mts <organization-id> --apply
+```
+The operation is additive and idempotency-guarded; generated volunteer and shelter-manager accounts use random undisclosed passwords and are sample profiles rather than demo login credentials.
 
 ### Run
 ```bash

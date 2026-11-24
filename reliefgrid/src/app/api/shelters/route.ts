@@ -11,7 +11,14 @@ export async function GET(req: Request) {
     const status = searchParams.get("status") || undefined;
     const search = searchParams.get("search")?.trim() || "";
 
-    const where: any = user.role === "SHELTER_MANAGER" ? { managerId: user.id } : {};
+    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
+      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
+    }
+    const where: any = user.role === "SHELTER_MANAGER"
+      ? { managerId: user.id }
+      : user.role === "RELIEF_ORGANIZATION"
+        ? { manager: { organizationId: user.organizationId } }
+        : {};
     if (status) where.status = status;
     if (search) where.OR = [
       { name: { contains: search, mode: "insensitive" } },

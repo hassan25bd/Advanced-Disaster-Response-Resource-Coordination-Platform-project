@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       ],
     } : {};
     const resourceWhere = organizationScope ? { organizationId: organizationScope } : {};
+    const shelterWhere = organizationScope ? { manager: { organizationId: organizationScope } } : {};
     const volunteerWhere = {
       role: "VOLUNTEER" as const,
       availabilityStatus: "AVAILABLE" as const,
@@ -49,7 +50,7 @@ export async function GET(req: Request) {
       prisma.incident.aggregate({ where: incidentWhere, _sum: { affectedPopulation: true } }),
       prisma.emergencyRequest.count({ where: { ...requestWhere, status: "PENDING" } }),
       prisma.resource.aggregate({ where: resourceWhere, _sum: { availableQuantity: true } }),
-      prisma.shelter.count({ where: { status: "OPEN" } }),
+      prisma.shelter.count({ where: { ...shelterWhere, status: "OPEN" } }),
       prisma.user.count({ where: volunteerWhere }),
       prisma.incident.groupBy({ by: ["category"], _count: true, where: incidentWhere }),
       prisma.emergencyRequest.findMany({
