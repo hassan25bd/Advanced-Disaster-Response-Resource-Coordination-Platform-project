@@ -5,15 +5,26 @@ import prisma from "@/lib/prisma";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await requireAuth();
+    const user = await requireAuth();
+    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const request = await prisma.emergencyRequest.findUnique({
       where: { id },
       include: {
-        incident: true,
-        allocations: { include: { resource: true, organization: true, coordinator: { select: { id: true, name: true } } } },
+        incident: { include: { reportedBy: { select: { organizationId: true } } } },
+        allocations: {
+          where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
+          include: { resource: true, organization: true, coordinator: { select: { id: true, name: true } } },
+        },
       },
     });
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    if (user.role === "RELIEF_ORGANIZATION" &&
+        request.incident.reportedBy.organizationId !== user.organizationId &&
+        !request.allocations.some((allocation) => allocation.organizationId === user.organizationId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json(request);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
@@ -33,14 +44,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!isAdmin && !isCoordinator && !isOrg) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    if (isOrg) {
+      const assigned = user.organizationId && await prisma.resourceAllocation.findFirst({
+        where: { requestId: id, organizationId: user.organizationId },
+        select: { id: true },
+      });
+      if (!assigned) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { priority, priorityScore, status, description } = body || {};
+    if (isOrg && (priority !== undefined || priorityScore !== undefined || status !== undefined)) {
+      return NextResponse.json({ error: "Only administrators and coordinators can change request priority or status" }, { status: 403 });
+    }
+    if ((priority !== undefined && !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priority)) ||
+        (status !== undefined && !["PENDING", "VERIFIED", "ALLOCATED", "IN_TRANSIT", "COMPLETED", "REJECTED"].includes(status)) ||
+        (priorityScore !== undefined && (!Number.isInteger(priorityScore) || priorityScore < 0 || priorityScore > 2147483647)) ||
+        (description !== undefined && (typeof description !== "string" || !description.trim()))) {
+      return NextResponse.json({ error: "Invalid request update" }, { status: 400 });
+    }
 
     const updates: any = {};
     const historyEntries: any[] = [];
     const track = (field: string, prev: any, next: any, action: string) => {
-      if (prev !== undefined && prev !== next) {
+      if (next !== undefined && prev !== next) {
         historyEntries.push({ incidentId: request.incidentId, action, previousValue: String(prev), newValue: String(next), changedById: user.id });
       }
       if (next !== undefined) updates[field] = next;

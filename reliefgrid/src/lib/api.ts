@@ -12,5 +12,6 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit) {
 }
 
 export function statusLabel(s: string) {
-  return s.split(/(?=[A-Z])/).join(" ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return s.replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }

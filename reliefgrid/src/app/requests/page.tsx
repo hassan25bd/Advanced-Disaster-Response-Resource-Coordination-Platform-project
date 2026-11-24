@@ -18,30 +18,41 @@ export default function RequestsPage() {
   const { data: session } = useSession();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({ search: "", type: "", priority: "", status: "" });
   const user = (session?.user as any) || {};
 
   useEffect(() => {
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setError("");
+      const params = new URLSearchParams({ page: String(page) });
+      if (filters.search) params.set("search", filters.search);
+      if (filters.type) params.set("type", filters.type);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.status) params.set("status", filters.status);
+      try {
+        const result = await apiFetch(`/api/requests?${params}`);
+        if (active) {
+          setData(result.data);
+          setTotal(result.total);
+        }
+      } catch {
+        if (active) setError("Unable to load requests. Please try again.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
     load();
-  }, [filters]);
-
-  async function load() {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (filters.search) params.set("search", filters.search);
-    if (filters.type) params.set("type", filters.type);
-    if (filters.priority) params.set("priority", filters.priority);
-    if (filters.status) params.set("status", filters.status);
-    const d = await apiFetch(`/api/requests?${params}`);
-    setData(d.data);
-    setLoading(false);
-  }
+    return () => { active = false; };
+  }, [filters, page]);
 
   const types = ["FOOD", "WATER", "MEDICAL", "SHELTER", "RESCUE", "TRANSPORTATION"];
   const priorities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
   const statuses = ["PENDING", "VERIFIED", "ALLOCATED", "IN_TRANSIT", "COMPLETED", "REJECTED"];
-
-  if (loading) return <div className="py-10 text-center">Loading requests...</div>;
 
   return (
     <div className="space-y-5">
@@ -50,22 +61,24 @@ export default function RequestsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Emergency Requests</h1>
           <p className="text-slate-500 text-sm">Manage assistance requests from affected communities</p>
         </div>
-        <Button className="bg-rose-600 hover:bg-rose-700" onClick={() => location.assign("/requests/create")}>
-          New Request
-        </Button>
+        {["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION"].includes(user.role) && (
+          <Button className="bg-rose-600 hover:bg-rose-700" onClick={() => location.assign("/requests/create")}>
+            New Request
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Input placeholder="Search requests..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
-        <Select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}>
+        <Input placeholder="Search requests..." value={filters.search} onChange={(e) => { setPage(1); setFilters({ ...filters, search: e.target.value }); }} />
+        <Select value={filters.type} onChange={(e) => { setPage(1); setFilters({ ...filters, type: e.target.value }); }}>
           <option value="">All Types</option>
           {types.map((t) => <option key={t} value={t}>{statusLabel(t)}</option>)}
         </Select>
-        <Select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
+        <Select value={filters.priority} onChange={(e) => { setPage(1); setFilters({ ...filters, priority: e.target.value }); }}>
           <option value="">All Priorities</option>
           {priorities.map((p) => <option key={p} value={p}>{statusLabel(p)}</option>)}
         </Select>
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+        <Select value={filters.status} onChange={(e) => { setPage(1); setFilters({ ...filters, status: e.target.value }); }}>
           <option value="">All Statuses</option>
           {statuses.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </Select>
@@ -85,7 +98,11 @@ export default function RequestsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {data.length === 0 ? (
+            {loading ? (
+              <tr><td colSpan={7} className="p-4 text-center text-slate-500">Loading requests...</td></tr>
+            ) : error ? (
+              <tr><td colSpan={7} role="alert" className="p-4 text-center text-rose-700">{error}</td></tr>
+            ) : data.length === 0 ? (
               <tr><td colSpan={7} className="p-4 text-center text-slate-500">No requests found.</td></tr>
             ) : (
               data.map((r: any) => (
@@ -102,6 +119,13 @@ export default function RequestsPage() {
             )}
           </tbody>
         </table>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+        <span>Page {page} of {Math.max(1, Math.ceil(total / 10))} ({total} requests)</span>
+        <div className="flex gap-2">
+          <Button disabled={loading || page <= 1} onClick={() => setPage(page - 1)}>Previous</Button>
+          <Button disabled={loading || page * 10 >= total} onClick={() => setPage(page + 1)}>Next</Button>
+        </div>
       </div>
     </div>
   );

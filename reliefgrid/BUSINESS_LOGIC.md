@@ -40,8 +40,8 @@ The rules below are the intended behavior. Some remain incomplete; see Implement
 3. Emergency Coordinators manage authorized emergency operations.
 
 ### Data Integrity
-- Allocation and shelter updates use Prisma transactions. Other inventory mutation paths still need integrity checks and history.
-- `IncidentHistory`, `ResourceStockHistory`, `ShelterOccupancyLog`, `ActivityLog`, `Notification` provide full audit trail.
+- Allocation, shelter updates, and inventory adjustments use Prisma transactions. Other mutation paths still require review.
+- `IncidentHistory`, `ResourceStockHistory`, `ShelterOccupancyLog`, and `ActivityLog` record some changes, but audit coverage is incomplete.
 - `duplicateFlag` on requests detects duplicate requests for the same incident+type.
 - `qrVerificationCode` on allocations is unique for QR-based distribution verification.
 
@@ -58,7 +58,7 @@ Development seed accounts use password `ReliefGrid@2026` by default. Production 
 ## Implementation Gaps
 
 - Several create/detail links lead to pages that have not been implemented.
-- Export buttons are placeholders, and real-time notifications and updates are not implemented.
+- Incident and request CSV exports are available; PDF exports and real-time notifications and updates are not implemented.
 - Priority scoring does not yet include all required factors, and response-time analytics are not calculated.
 - Organization isolation and inventory/history enforcement need a complete server-side audit before operational use.
 - The seed script creates sample data only when explicitly run; a new deployment starts empty.

@@ -21,7 +21,11 @@ export async function GET(req: Request) {
     };
 
     if (user.role === "RELIEF_ORGANIZATION") {
-      where.allocations = { some: { organizationId: user.organizationId } };
+      if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
+      where.OR = [
+        { incident: { reportedBy: { organizationId: user.organizationId } } },
+        { allocations: { some: { organizationId: user.organizationId } } },
+      ];
     }
 
     const [data, total] = await Promise.all([
@@ -32,7 +36,10 @@ export async function GET(req: Request) {
         orderBy: [{ priorityScore: "desc" }, { createdAt: "desc" }],
         include: {
           incident: { select: { id: true, title: true, category: true, severity: true } },
-          allocations: { include: { resource: true, organization: true } },
+          allocations: {
+            where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
+            include: { resource: true, organization: true },
+          },
         },
       }),
       prisma.emergencyRequest.count({ where }),
@@ -50,8 +57,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { incidentId, type, quantity, location, latitude, longitude, priority, affectedPeople, description } = body || {};
 
-    if (!incidentId || !type || !location) {
+    if (typeof incidentId !== "string" || !incidentId || typeof location !== "string" || !location.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (!["FOOD", "WATER", "MEDICAL", "SHELTER", "RESCUE", "TRANSPORTATION"].includes(type) ||
+        !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priority) ||
+        !Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647 ||
+        !Number.isInteger(affectedPeople) || affectedPeople < 0 || affectedPeople > 2147483647 ||
+        (latitude !== undefined && (typeof latitude !== "number" || !Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+        (longitude !== undefined && (typeof longitude !== "number" || !Number.isFinite(longitude) || longitude < -180 || longitude > 180)) ||
+        typeof description !== "string" || !description.trim()) {
+      return NextResponse.json({ error: "Invalid request details" }, { status: 400 });
     }
 
     const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
@@ -62,6 +78,9 @@ export async function POST(req: Request) {
     const isOrg = user.role === "RELIEF_ORGANIZATION";
     if (!isAdmin && !isCoordinator && !isOrg) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (isOrg && (!user.organizationId || incident.reportedById !== user.id)) {
+      return NextResponse.json({ error: "Organizations may create requests only for their own reported incidents" }, { status: 403 });
     }
 
     const pWeight = { LOW: 1, MEDIUM: 3, HIGH: 6, CRITICAL: 10 }[priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"] || 3;
@@ -78,8 +97,8 @@ export async function POST(req: Request) {
           type,
           quantity: quantity || 0,
           location,
-          latitude: latitude || 0,
-          longitude: longitude || 0,
+          latitude: latitude ?? incident.latitude,
+          longitude: longitude ?? incident.longitude,
           priority: priority || "MEDIUM",
           priorityScore,
           affectedPeople: affectedPeople || 0,

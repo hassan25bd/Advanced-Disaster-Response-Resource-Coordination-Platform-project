@@ -53,6 +53,10 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: "No organization associated" }, { status: 400 });
 
     const available = availableQuantity !== undefined ? availableQuantity : totalQuantity;
+    if (!Number.isSafeInteger(totalQuantity) || totalQuantity < 0 ||
+        !Number.isSafeInteger(available) || available < 0 || available > totalQuantity) {
+      return NextResponse.json({ error: "Quantities must be non-negative integers and available quantity cannot exceed total quantity" }, { status: 400 });
+    }
 
     const resource = await prisma.$transaction(async (tx) => {
       const r = await tx.resource.create({
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
         },
       });
       await tx.resourceStockHistory.create({
-        data: { resourceId: r.id, changeAmount: totalQuantity, type: "RESTOCK", notes: "Initial stock registration", timestamp: new Date() },
+        data: { resourceId: r.id, changeAmount: available, type: "RESTOCK", notes: "Initial stock registration", timestamp: new Date() },
       });
       await tx.activityLog.create({ data: { userId: user.id, action: "resource_created", entityType: "Resource", entityId: r.id, details: name } });
       return r;

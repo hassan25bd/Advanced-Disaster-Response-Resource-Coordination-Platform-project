@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import { apiFetch, statusLabel } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle, Button } from "@/components/ui";
 import { BarChart, Bar, PieChart, Pie, ResponsiveContainer, Cell } from "recharts";
 
 const COLORS = ["#ec4899", "#f59e0b", "#3b82f6", "#10b981", "#ef4444"];
@@ -11,18 +10,56 @@ const COLORS = ["#ec4899", "#f59e0b", "#3b82f6", "#10b981", "#ef4444"];
 export default function ReportsPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    apiFetch("/api/analytics").then(setStats).finally(() => setLoading(false));
+    apiFetch("/api/analytics").then(setStats).catch(() => setMessage("Unable to load analytics.")).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="py-10 text-center">Loading reports...</div>;
+
+  async function exportCsv(kind: "incidents" | "requests") {
+    setExporting(true);
+    setMessage("");
+    try {
+      const fields = kind === "incidents"
+        ? ["id", "title", "category", "location", "severity", "affectedPopulation", "status", "createdAt"]
+        : ["id", "type", "quantity", "location", "priority", "affectedPeople", "status", "createdAt", "description"];
+      const rows: Record<string, unknown>[] = [];
+      let page = 1;
+      while (true) {
+        const result: { data: Record<string, unknown>[]; total: number } = await apiFetch(`/api/${kind}?page=${page}&pageSize=100`);
+        rows.push(...result.data);
+        if (result.data.length === 0 || rows.length >= result.total) break;
+        page++;
+      }
+      const csvCell = (value: unknown) => {
+        let text = value == null ? "" : String(value);
+        if (typeof value === "string" && /^[\s]*[=+\-@\t\r]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+      const csv = [fields.map(csvCell).join(","), ...rows.map((row) => fields.map((field) => csvCell(row[field])).join(","))].join("\r\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `reliefgrid-${kind}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage(`Exported ${rows.length} ${kind}.`);
+    } catch {
+      setMessage("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Reports & Analytics</h1>
         <p className="text-slate-500 text-sm">Operational analytics and export</p>
+        {message && <p role="status" className="mt-2 text-sm text-slate-700">{message}</p>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -57,9 +94,8 @@ export default function ReportsPage() {
           <CardHeader><CardTitle>Export Data</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-slate-600">Export platform data for offline review.</p>
-            <Button className="w-full" onClick={() => alert("CSV export initiated")}>Export Incidents (CSV)</Button>
-            <Button className="w-full" onClick={() => alert("CSV export initiated")}>Export Requests (CSV)</Button>
-            <Button className="w-full" onClick={() => alert("PDF report generated")}>Generate PDF Report</Button>
+            <Button className="w-full" disabled={exporting} onClick={() => exportCsv("incidents")}>Export Incidents (CSV)</Button>
+            <Button className="w-full" disabled={exporting} onClick={() => exportCsv("requests")}>Export Requests (CSV)</Button>
           </CardContent>
         </Card>
       </div>

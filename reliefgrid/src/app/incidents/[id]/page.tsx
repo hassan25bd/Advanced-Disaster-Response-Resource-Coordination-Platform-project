@@ -4,13 +4,14 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
-export default function IncidentDetailsPage({ params }: { params: { id: string } }) {
+export default function IncidentDetailsPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const params = useParams<{ id: string }>();
   const [incident, setIncident] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const user = (session?.user as any) || {};

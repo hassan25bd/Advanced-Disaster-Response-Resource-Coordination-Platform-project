@@ -33,6 +33,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = await req.json();
     const { name, category, totalQuantity, availableQuantity, unit, storageLocation, latitude, longitude } = body || {};
+    const total = totalQuantity === undefined ? resource.totalQuantity : totalQuantity;
+    const available = availableQuantity === undefined ? resource.availableQuantity : availableQuantity;
+    if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(available) ||
+        available < 0 || available > total) {
+      return NextResponse.json({ error: "Quantities must be non-negative integers and available quantity cannot exceed total quantity" }, { status: 400 });
+    }
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (category !== undefined) updates.category = category;
@@ -43,8 +49,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (latitude !== undefined) updates.latitude = latitude;
     if (longitude !== undefined) updates.longitude = longitude;
 
-    const updated = await prisma.resource.update({ where: { id }, data: updates });
-    await prisma.activityLog.create({ data: { userId: user.id, action: "resource_updated", entityType: "Resource", entityId: id, details: name || resource.name } });
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.resource.updateMany({
+        where: { id, organizationId: resource.organizationId, totalQuantity: resource.totalQuantity, availableQuantity: resource.availableQuantity },
+        data: updates,
+      });
+      if (result.count !== 1) {
+        const error = new Error("Resource changed; reload and try again") as Error & { status: number };
+        error.status = 409;
+        throw error;
+      }
+      if (available !== resource.availableQuantity) {
+        await tx.resourceStockHistory.create({
+          data: { resourceId: id, changeAmount: available - resource.availableQuantity, type: "ADJUSTMENT", notes: "Stock updated" },
+        });
+      }
+      await tx.activityLog.create({ data: { userId: user.id, action: "resource_updated", entityType: "Resource", entityId: id, details: name || resource.name } });
+      return tx.resource.findUniqueOrThrow({ where: { id } });
+    });
     return NextResponse.json(updated);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Forbidden" }, { status: err.status || 403 });
