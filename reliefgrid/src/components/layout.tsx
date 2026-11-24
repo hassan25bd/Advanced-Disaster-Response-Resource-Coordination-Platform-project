@@ -8,6 +8,7 @@ import { Navbar } from "./navbar";
 const NAV: Record<string, { label: string; href: string }[]> = {
   SYSTEM_ADMIN: [
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Incidents", href: "/incidents" },
     { label: "Emergency Requests", href: "/requests" },
     { label: "Resources", href: "/resources" },
@@ -22,6 +23,7 @@ const NAV: Record<string, { label: string; href: string }[]> = {
   ],
   EMERGENCY_COORDINATOR: [
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Incidents", href: "/incidents" },
     { label: "Emergency Requests", href: "/requests" },
     { label: "Resources", href: "/resources" },
@@ -35,6 +37,7 @@ const NAV: Record<string, { label: string; href: string }[]> = {
   ],
   RELIEF_ORGANIZATION: [
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Incidents", href: "/incidents" },
     { label: "Emergency Requests", href: "/requests" },
     { label: "Resources", href: "/resources" },
@@ -47,6 +50,7 @@ const NAV: Record<string, { label: string; href: string }[]> = {
   ],
   SHELTER_MANAGER: [
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Notifications", href: "/notifications" },
     { label: "Shelters", href: "/shelters" },
     { label: "Map", href: "/map" },
     { label: "Reports & Analytics", href: "/reports" },
@@ -54,6 +58,7 @@ const NAV: Record<string, { label: string; href: string }[]> = {
   ],
   VOLUNTEER: [
     { label: "Dashboard", href: "/dashboard" },
+    { label: "Notifications", href: "/notifications" },
     { label: "My Tasks", href: "/tasks" },
     { label: "Map", href: "/map" },
     { label: "Profile", href: "/profile" },

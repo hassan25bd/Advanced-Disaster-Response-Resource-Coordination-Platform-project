@@ -45,7 +45,7 @@ Responses are shaped `{ data, total, page, pageSize }`.
 - `PATCH /api/requests/[id]` — update priority/status (audit logged)
 
 ### Resources
-- `GET /api/resources` — list inventory
+- `GET /api/resources` — list inventory (organization-scoped; paginated and searchable)
 - `POST /api/resources` — register resource (RESTOCK history)
 - `GET /api/resources/[id]` — detail with stock history
 - `PATCH /api/resources/[id]` — update (org-scoped)
@@ -53,27 +53,31 @@ Responses are shaped `{ data, total, page, pageSize }`.
 
 ### Resource Allocations
 - `GET /api/allocations` — list
-- `POST /api/allocations` — allocate (server-side: validates availableQuantity, decrements stock, creates stock history, marks request ALLOCATED)
-- `PATCH /api/allocations/[id]` — update status (DELIVERED → request COMPLETED)
+- `POST /api/allocations` — allocate (validates remaining request quantity and available stock, decrements inventory and records stock/activity history)
+- `GET /api/allocations/[id]` — detail and status history
+- `PATCH /api/allocations/[id]` — move distribution status forward; cancellation restores inventory and records the adjustment
 
 ### Shelters
-- `GET /api/shelters` — list
+- `GET /api/shelters` — list (shelter managers see only their shelters; searchable and paginated)
 - `POST /api/shelters` — register
 - `GET /api/shelters/[id]` — detail with occupancy logs
 - `PATCH /api/shelters/[id]` — update (occupancy never exceeds capacity; occupancy log written)
 
 ### Teams
-- `GET /api/teams` — list
-- `POST /api/teams` — create
+- `GET /api/teams` — list (role/organization-scoped, searchable and paginated)
+- `POST /api/teams` — create (leader must be an active volunteer in the team organization)
+- `GET /api/teams/[id]` — detail with assigned tasks
+- `PATCH /api/teams/[id]` — update leader or deployment status
 
 ### Volunteer Tasks
-- `GET /api/tasks` — list (volunteers see only own tasks)
-- `POST /api/tasks` — create (Coordinator/Admin)
-- `PATCH /api/tasks/[id]` — update (volunteer only own tasks; field report/photos)
+- `GET /api/tasks` — list (role-scoped, searchable and paginated)
+- `POST /api/tasks` — create (Coordinator/Admin; validates incident/team/volunteer assignment and notifies the assigned volunteer)
+- `GET /api/tasks/[id]` — task detail and activity history
+- `PATCH /api/tasks/[id]` — update own volunteer task status/report/photos; completed tasks are read-only
 
 ### Notifications
-- `GET /api/notifications` — list for current user
-- `PATCH /api/notifications/[id]` — mark read
+- `GET /api/notifications` — paginated list and unread count for current user
+- `PATCH /api/notifications/[id]` — mark read/unread (owner or System Admin)
 
 ### Analytics
 - `GET /api/analytics` — dashboard metrics: active incidents, affected people, pending requests, available resources, active shelters, available volunteers, average time to first verification/response in minutes, category distribution, daily request trends, and resource distribution. Relief-organization metrics are scoped to that organization where applicable.

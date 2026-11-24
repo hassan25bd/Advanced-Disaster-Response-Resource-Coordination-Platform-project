@@ -15,19 +15,25 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "" });
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const user = (session?.user as any) || {};
 
   useEffect(() => {
     load();
-  }, [filters]);
+  }, [filters, page]);
 
   async function load() {
     setLoading(true);
     const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
     if (filters.search) params.set("search", filters.search);
     try {
       const d = await apiFetch(`/api/teams?${params}`);
       setData(d.data);
+      setTotal(d.total);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load teams.");
@@ -59,7 +65,11 @@ export default function TeamsPage() {
       </div>
 
       <div className="mb-4">
-        <Input placeholder="Search teams..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+        <Input placeholder="Search teams..." value={filters.search} onChange={(e) => { setPage(1); setFilters({ ...filters, search: e.target.value }); }} />
+      </div>
+      <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+        <span>{total ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total} teams` : "No teams"}</span>
+        <div className="flex gap-2"><Button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</Button><Button disabled={page * pageSize >= total} onClick={() => setPage((current) => current + 1)}>Next</Button></div>
       </div>
 
       <div className="overflow-x-auto">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth, requireRole } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 function orgFilter(user: any) {
@@ -9,7 +9,10 @@ function orgFilter(user: any) {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
+    if (user.role !== "SYSTEM_ADMIN" && !user.organizationId) {
+      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
+    }
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
@@ -45,12 +48,24 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, category, totalQuantity, availableQuantity, unit, storageLocation, latitude, longitude } = body || {};
 
-    if (!name || !category || totalQuantity === undefined) {
+    if (typeof name !== "string" || !name.trim() || !category || totalQuantity === undefined) {
       return NextResponse.json({ error: "Name, category, and total quantity are required" }, { status: 400 });
     }
 
-    const orgId = user.role === "SYSTEM_ADMIN" ? (body.organizationId || user.organizationId) : user.organizationId;
+    const orgId = user.role === "RELIEF_ORGANIZATION"
+      ? user.organizationId
+      : (body.organizationId || user.organizationId);
     if (!orgId) return NextResponse.json({ error: "No organization associated" }, { status: 400 });
+    if (user.role === "EMERGENCY_COORDINATOR" && orgId !== user.organizationId) {
+      return NextResponse.json({ error: "You can only manage resources for your organization" }, { status: 403 });
+    }
+    if (!["FOOD_PACKAGES", "DRINKING_WATER", "MEDICAL_SUPPLIES", "EMERGENCY_KITS", "BLANKETS", "RESCUE_EQUIPMENT", "TRANSPORTATION"].includes(category)) {
+      return NextResponse.json({ error: "Invalid resource category" }, { status: 400 });
+    }
+    if ((latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+        (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
+      return NextResponse.json({ error: "Invalid resource coordinates" }, { status: 400 });
+    }
 
     const available = availableQuantity !== undefined ? availableQuantity : totalQuantity;
     if (!Number.isSafeInteger(totalQuantity) || totalQuantity < 0 ||

@@ -165,6 +165,23 @@ export async function POST(req: Request) {
       await tx.activityLog.create({
         data: { userId: user.id, action: "request_created", entityType: "EmergencyRequest", entityId: req.id, details: type },
       });
+      if (!duplicate) {
+        const coordinators = await tx.user.findMany({
+          where: { role: "EMERGENCY_COORDINATOR", isActive: true },
+          select: { id: true },
+        });
+        if (coordinators.length) {
+          await tx.notification.createMany({
+            data: coordinators.map((coordinator) => ({
+              userId: coordinator.id,
+              title: "New emergency request",
+              message: `${type} assistance is requested at ${location}.`,
+              type: "REQUEST_CREATED",
+              link: `/requests/${req.id}`,
+            })),
+          });
+        }
+      }
       return req;
     });
 

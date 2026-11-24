@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 const ROLE_LABEL: Record<string, string> = {
   SYSTEM_ADMIN: "System Admin",
@@ -17,6 +19,25 @@ export function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
   const user = (session?.user as any) || {};
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsUnavailable, setNotificationsUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (!user.id) return;
+    let active = true;
+    const refresh = () => {
+      apiFetch("/api/notifications?page=1&pageSize=1")
+        .then((result) => {
+          if (!active) return;
+          setUnreadCount(result.unreadCount);
+          setNotificationsUnavailable(false);
+        })
+        .catch(() => { if (active) setNotificationsUnavailable(true); });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [user.id]);
 
   return (
     <nav className="sticky top-0 z-20 border-b border-slate-200 bg-white">
@@ -34,6 +55,9 @@ export function Navbar() {
               <span className="w-2 h-2 rounded-full bg-green-500" /> Operational
             </span>
           </div>
+          <Link href="/notifications" aria-label="Notifications" className="relative text-sm font-medium text-slate-600 hover:text-rose-700">
+            Notifications{notificationsUnavailable ? <span className="ml-1 text-amber-700" title="Notification count unavailable">!</span> : unreadCount > 0 && <span className="ml-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-xs text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+          </Link>
           <div className="ml-4 flex items-center gap-3 rtl:space-x-reverse">
             <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
               <div className="text-left">

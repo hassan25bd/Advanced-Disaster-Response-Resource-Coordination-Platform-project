@@ -14,6 +14,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = await req.json();
     const { isRead } = body || {};
+    if (isRead !== undefined && typeof isRead !== "boolean") {
+      return NextResponse.json({ error: "isRead must be a boolean" }, { status: 400 });
+    }
     const updated = await prisma.notification.update({ where: { id }, data: { isRead: isRead !== undefined ? isRead : true } });
     return NextResponse.json(updated);
   } catch (err: any) {

@@ -36,20 +36,21 @@ src/
     login/, register/     # auth pages
     dashboard/            # analytics dashboard (charts)
     incidents/            # list, create, [id] details
-    requests/             # emergency requests list
-    resources/            # resource inventory
-    allocations/          # resource allocation
-    shelters/             # shelter management
+    requests/             # list, create, and detail
+    resources/            # inventory list, registration, and detail
+    allocations/          # list, create, and distribution detail
+    shelters/             # list, registration, and capacity/history detail
     volunteers/           # volunteer directory
-    teams/                # response teams
-    tasks/                # volunteer tasks
+    teams/                # team list, creation, and deployment detail
+    tasks/                # task list, assignment, field reports, and photographs
+    notifications/        # per-user notification center
     map/                  # live incident map
     reports/              # analytics & export
     users/                # user management
     profile/              # profile settings
     api/                  # REST API routes (NextAuth, incidents, requests, ...)
   components/
-    layout.tsx, navbar.tsx, sidebar.tsx, session-wrapper.tsx, ui.tsx
+    layout.tsx, navbar.tsx, session-wrapper.tsx, ui.tsx
   lib/
     prisma.ts, auth.ts, api-auth.ts, api.ts
 prisma/
@@ -96,10 +97,11 @@ npm run lint                # eslint
 
 - **Incident Management:** report, categorize (Flood, Cyclone, Earthquake, Fire, Landslide, Infrastructure Failure), severity, coordinator-assessed location risk, GPS, image, history, searchable priority-ranked pagination.
 - **Emergency Requests:** Food, Water, Medical, Shelter, Rescue, Transportation; verification, location-risk and age-aware prioritization, duplicate detection, searchable pagination.
-- **Resource Management:** register resources, stock tracking, availability, movement history.
-- **Resource Allocation:** server-side validation (cannot exceed available quantity), automatic stock decrement, allocation history, QR verification codes.
-- **Shelter Management:** capacity, occupancy, available capacity validation, occupancy logs.
-- **Volunteer & Team Management:** registration, teams, task assignment, field reports/photos, completion tracking.
+- **Resource Management:** organization-scoped registration and editing, searchable paginated stock, availability, movement history.
+- **Resource Allocation:** validates available stock and remaining request quantity, updates inventory transactionally, restores stock on cancellation, preserves status history and QR verification codes.
+- **Shelter Management:** capacity and occupancy validation, occupancy history, manager-scoped access.
+- **Volunteer & Team Management:** team creation/lead assignment, task assignment and status transitions, field reports, bounded image uploads, activity history.
+- **Notifications:** per-user inbox, unread count, assignment and allocation status alerts.
 - **Priority Management:** server-calculated scores account for severity/urgency, affected population, location risk, and elapsed time; priority changes are audited.
 - **Analytics Dashboard:** Recharts charts, daily request trends, organization-scoped metrics, and average time to first incident verification/response.
 - **Map View:** Leaflet map with incident & shelter markers.

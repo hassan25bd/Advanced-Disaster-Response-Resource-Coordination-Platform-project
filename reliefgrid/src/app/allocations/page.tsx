@@ -15,20 +15,26 @@ export default function AllocationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "" });
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const user = (session?.user as any) || {};
 
   useEffect(() => {
     load();
-  }, [filters]);
+  }, [filters, page]);
 
   async function load() {
     setLoading(true);
     const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
     if (filters.search) params.set("search", filters.search);
     if (filters.status) params.set("status", filters.status);
     try {
       const d = await apiFetch(`/api/allocations?${params}`);
       setData(d.data);
+      setTotal(d.total);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load allocations.");
@@ -62,11 +68,15 @@ export default function AllocationsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Input placeholder="Search allocations..." value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+        <Input placeholder="Search allocations..." value={filters.search} onChange={(e) => { setPage(1); setFilters({ ...filters, search: e.target.value }); }} />
+        <Select value={filters.status} onChange={(e) => { setPage(1); setFilters({ ...filters, status: e.target.value }); }}>
           <option value="">All Statuses</option>
           {statuses.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </Select>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+        <span>{total ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total} allocations` : "No allocations"}</span>
+        <div className="flex gap-2"><Button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</Button><Button disabled={page * pageSize >= total} onClick={() => setPage((current) => current + 1)}>Next</Button></div>
       </div>
 
       <div className="overflow-x-auto">

@@ -92,7 +92,10 @@ export async function POST(req: Request) {
         !Number.isSafeInteger(affectedPopulation) || affectedPopulation < 0 ||
         (latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
         (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) ||
-        (locationRiskScore !== undefined && (!Number.isInteger(locationRiskScore) || locationRiskScore < 0 || locationRiskScore > 5))) {
+        (locationRiskScore !== undefined && (!Number.isInteger(locationRiskScore) || locationRiskScore < 0 || locationRiskScore > 5)) ||
+        (imageUrl !== undefined && imageUrl !== null && imageUrl !== "" &&
+          (typeof imageUrl !== "string" || imageUrl.length > 1_100_000 ||
+            (!imageUrl.startsWith("data:image/") && !imageUrl.startsWith("https://"))))) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     if (locationRiskScore !== undefined && !["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user.role)) {
@@ -125,6 +128,21 @@ export async function POST(req: Request) {
       await tx.activityLog.create({
         data: { userId: user.id, action: "incident_reported", entityType: "Incident", entityId: inc.id, details: title },
       });
+      const coordinators = await tx.user.findMany({
+        where: { role: "EMERGENCY_COORDINATOR", isActive: true },
+        select: { id: true },
+      });
+      if (coordinators.length) {
+        await tx.notification.createMany({
+          data: coordinators.map((coordinator) => ({
+            userId: coordinator.id,
+            title: "New incident reported",
+            message: `${title} was reported at ${location}.`,
+            type: "INCIDENT_REPORTED",
+            link: `/incidents/${inc.id}`,
+          })),
+        });
+      }
       return inc;
     });
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { readImageFile } from "@/lib/image-upload";
 import { Button, Input, Select, Textarea, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
 const CATEGORIES = ["FLOOD", "CYCLONE", "EARTHQUAKE", "FIRE", "LANDSLIDE", "INFRASTRUCTURE_FAILURE"];
@@ -25,21 +26,37 @@ export default function CreateIncidentPage() {
     setError("");
     setLoading(true);
     try {
+      const payload: Record<string, unknown> = {
+        ...form,
+        latitude: parseFloat(form.latitude) || 0,
+        longitude: parseFloat(form.longitude) || 0,
+        affectedPopulation: parseInt(form.affectedPopulation) || 0,
+      };
+      if (["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user.role)) {
+        payload.locationRiskScore = Number(form.locationRiskScore);
+      } else {
+        delete payload.locationRiskScore;
+      }
       await apiFetch("/api/incidents", {
         method: "POST",
-        body: JSON.stringify({
-          ...form,
-          latitude: parseFloat(form.latitude) || 0,
-          longitude: parseFloat(form.longitude) || 0,
-          affectedPopulation: parseInt(form.affectedPopulation) || 0,
-          locationRiskScore: Number(form.locationRiskScore),
-        }),
+        body: JSON.stringify(payload),
       });
       router.push("/incidents");
     } catch (err: any) {
       setError(err.message || "Failed to create incident");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleImageUpload(file: File | undefined) {
+    if (!file) return;
+    try {
+      const imageUrl = await readImageFile(file);
+      setForm((current) => ({ ...current, imageUrl }));
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to upload incident image.");
     }
   }
 
@@ -111,8 +128,9 @@ export default function CreateIncidentPage() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
-              <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Incident photograph (up to 800 KB)</label>
+              <Input type="file" accept="image/*" onChange={(e) => { void handleImageUpload(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+              {form.imageUrl && <img src={form.imageUrl} alt="Incident preview" className="mt-2 max-h-56 rounded object-contain" />}
             </div>
             <div className="flex gap-3 pt-4">
               <Button type="submit" className="bg-rose-600 hover:bg-rose-700">Submit Report</Button>

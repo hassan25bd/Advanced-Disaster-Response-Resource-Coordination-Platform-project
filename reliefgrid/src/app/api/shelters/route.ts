@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
-import { requireAuth, requireRole } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(req: Request) {
   try {
-    await requireAuth();
+    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "SHELTER_MANAGER");
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
     const status = searchParams.get("status") || undefined;
+    const search = searchParams.get("search")?.trim() || "";
 
-    const where: any = {};
+    const where: any = user.role === "SHELTER_MANAGER" ? { managerId: user.id } : {};
     if (status) where.status = status;
+    if (search) where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { location: { contains: search, mode: "insensitive" } },
+    ];
 
     const [data, total] = await Promise.all([
       prisma.shelter.findMany({
@@ -36,7 +41,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, location, latitude, longitude, totalCapacity, facilities, status, managerId } = body || {};
 
-    if (!name || !location || totalCapacity === undefined) {
+    if (typeof name !== "string" || !name.trim() || typeof location !== "string" || !location.trim() || totalCapacity === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     if (!Number.isSafeInteger(totalCapacity) || totalCapacity < 0) {
@@ -45,12 +50,25 @@ export async function POST(req: Request) {
     if (user.role === "SHELTER_MANAGER" && managerId && managerId !== user.id) {
       return NextResponse.json({ error: "Shelter managers cannot assign another manager" }, { status: 403 });
     }
+    if ((latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+        (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) ||
+        (status !== undefined && !["OPEN", "FULL", "CLOSED", "MAINTENANCE"].includes(status)) ||
+        (facilities !== undefined && (!Array.isArray(facilities) || facilities.some((facility) => typeof facility !== "string")))) {
+      return NextResponse.json({ error: "Invalid shelter details" }, { status: 400 });
+    }
+    if (managerId && user.role !== "SHELTER_MANAGER") {
+      const manager = await prisma.user.findFirst({
+        where: { id: managerId, role: "SHELTER_MANAGER", isActive: true },
+        select: { id: true },
+      });
+      if (!manager) return NextResponse.json({ error: "Select an active shelter manager" }, { status: 400 });
+    }
 
     const shelter = await prisma.$transaction(async (tx) => {
       const s = await tx.shelter.create({
         data: {
-          name,
-          location,
+          name: name.trim(),
+          location: location.trim(),
           latitude: latitude || 0,
           longitude: longitude || 0,
           totalCapacity,

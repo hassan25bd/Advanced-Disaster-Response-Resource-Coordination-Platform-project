@@ -1,17 +1,20 @@
 ﻿import { NextResponse } from "next/server";
-import { requireAuth, requireRole } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireAuth();
+    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
+    if (user.role === "EMERGENCY_COORDINATOR" && !user.organizationId) {
+      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
+    }
     const resource = await prisma.resource.findUnique({
       where: { id },
       include: { organization: true, stockHistory: { orderBy: { timestamp: "desc" }, take: 50 }, allocations: true },
     });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
-    if (user.role === "RELIEF_ORGANIZATION" && resource.organizationId !== user.organizationId) {
+    if (user.role !== "SYSTEM_ADMIN" && resource.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json(resource);
@@ -39,8 +42,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         available < 0 || available > total) {
       return NextResponse.json({ error: "Quantities must be non-negative integers and available quantity cannot exceed total quantity" }, { status: 400 });
     }
+    const activeAllocations = await prisma.resourceAllocation.aggregate({
+      where: { resourceId: id, status: { in: ["ASSIGNED", "IN_TRANSIT"] } },
+      _sum: { allocatedQuantity: true },
+    });
+    if (available + (activeAllocations._sum.allocatedQuantity || 0) > total) {
+      return NextResponse.json({ error: "Total stock cannot be less than available stock plus active allocations" }, { status: 400 });
+    }
     const updates: any = {};
     if (name !== undefined) updates.name = name;
+    if (category !== undefined && !["FOOD_PACKAGES", "DRINKING_WATER", "MEDICAL_SUPPLIES", "EMERGENCY_KITS", "BLANKETS", "RESCUE_EQUIPMENT", "TRANSPORTATION"].includes(category)) {
+      return NextResponse.json({ error: "Invalid resource category" }, { status: 400 });
+    }
     if (category !== undefined) updates.category = category;
     if (totalQuantity !== undefined) updates.totalQuantity = totalQuantity;
     if (availableQuantity !== undefined) updates.availableQuantity = availableQuantity;
@@ -48,6 +61,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (storageLocation !== undefined) updates.storageLocation = storageLocation;
     if (latitude !== undefined) updates.latitude = latitude;
     if (longitude !== undefined) updates.longitude = longitude;
+    if ((latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+        (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
+      return NextResponse.json({ error: "Invalid resource coordinates" }, { status: 400 });
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.resource.updateMany({
@@ -59,9 +76,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         error.status = 409;
         throw error;
       }
-      if (available !== resource.availableQuantity) {
+      if (available !== resource.availableQuantity || total !== resource.totalQuantity) {
         await tx.resourceStockHistory.create({
-          data: { resourceId: id, changeAmount: available - resource.availableQuantity, type: "ADJUSTMENT", notes: "Stock updated" },
+          data: {
+            resourceId: id,
+            changeAmount: available - resource.availableQuantity,
+            type: "ADJUSTMENT",
+            notes: `Stock updated: total ${resource.totalQuantity} → ${total}, available ${resource.availableQuantity} → ${available}`,
+          },
         });
       }
       await tx.activityLog.create({ data: { userId: user.id, action: "resource_updated", entityType: "Resource", entityId: id, details: name || resource.name } });
