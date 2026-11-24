@@ -39,6 +39,12 @@ export async function POST(req: Request) {
     if (!name || !location || totalCapacity === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    if (!Number.isSafeInteger(totalCapacity) || totalCapacity < 0) {
+      return NextResponse.json({ error: "Capacity must be a non-negative integer" }, { status: 400 });
+    }
+    if (user.role === "SHELTER_MANAGER" && managerId && managerId !== user.id) {
+      return NextResponse.json({ error: "Shelter managers cannot assign another manager" }, { status: 403 });
+    }
 
     const shelter = await prisma.$transaction(async (tx) => {
       const s = await tx.shelter.create({
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
           currentOccupancy: 0,
           facilities: Array.isArray(facilities) ? facilities : [],
           status: status || "CLOSED",
-          managerId: managerId || null,
+          managerId: user.role === "SHELTER_MANAGER" ? user.id : managerId || null,
         },
       });
       await tx.activityLog.create({ data: { userId: user.id, action: "shelter_created", entityType: "Shelter", entityId: s.id, details: name } });

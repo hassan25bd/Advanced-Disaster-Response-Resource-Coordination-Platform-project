@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { requestId, resourceId, organizationId, allocatedQuantity } = body || {};
 
-    if (!requestId || !resourceId || !organizationId || !allocatedQuantity || allocatedQuantity < 1) {
+    if (!requestId || !resourceId || !organizationId || !Number.isSafeInteger(allocatedQuantity) || allocatedQuantity < 1) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -61,15 +61,30 @@ export async function POST(req: Request) {
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
 
-    // Business rule: same resource cannot be allocated beyond available quantity
-    if (resource.availableQuantity < allocatedQuantity) {
-      return NextResponse.json({ error: "Insufficient available quantity" }, { status: 400 });
+    if (resource.organizationId !== organizationId) {
+      return NextResponse.json({ error: "Resource does not belong to the assigned organization" }, { status: 400 });
     }
 
     const qrCode = `RG-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const coordinatorId = user.id;
 
     const allocation = await prisma.$transaction(async (tx) => {
+      const requestUpdate = await tx.emergencyRequest.updateMany({
+        where: { id: requestId, status: { in: ["VERIFIED", "ALLOCATED"] } },
+        data: { status: "ALLOCATED" },
+      });
+      if (requestUpdate.count !== 1) {
+        throw new Error("Request must be verified before allocation");
+      }
+
+      const stockUpdate = await tx.resource.updateMany({
+        where: { id: resourceId, organizationId, availableQuantity: { gte: allocatedQuantity } },
+        data: { availableQuantity: { decrement: allocatedQuantity } },
+      });
+      if (stockUpdate.count !== 1) {
+        throw new Error("Insufficient available quantity");
+      }
+
       const alloc = await tx.resourceAllocation.create({
         data: {
           requestId,
@@ -82,12 +97,6 @@ export async function POST(req: Request) {
         },
       });
 
-      // Auto-update resource stock
-      await tx.resource.update({
-        where: { id: resourceId },
-        data: { availableQuantity: { decrement: allocatedQuantity } },
-      });
-
       // Stock history
       await tx.resourceStockHistory.create({
         data: {
@@ -97,12 +106,6 @@ export async function POST(req: Request) {
           notes: `Allocated to request ${requestId}`,
           timestamp: new Date(),
         },
-      });
-
-      // Update request status
-      await tx.emergencyRequest.update({
-        where: { id: requestId },
-        data: { status: "ALLOCATED" },
       });
 
       await tx.activityLog.create({

@@ -2,6 +2,8 @@
 
 ReliefGrid is a full-stack emergency management platform built with Next.js (App Router), TypeScript, Tailwind CSS, PostgreSQL (Prisma), NextAuth.js, Recharts, and Leaflet. It enables emergency response organizations, relief teams, volunteers, and shelter managers to coordinate disaster response through a centralized system.
 
+**Live website:** https://reliefgrid-indol.vercel.app
+
 ## Development Demo Credentials
 
 These credentials are for local development only. Production seeding requires a unique `SEED_PASSWORD`.

@@ -22,6 +22,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = await req.json();
     const { status, fieldReport, fieldPhotos, teamId } = body || {};
+    if (isVolunteer && teamId !== undefined) {
+      return NextResponse.json({ error: "Volunteers cannot change task assignments" }, { status: 403 });
+    }
     const updates: any = {};
     if (status !== undefined) updates.status = status;
     if (fieldReport !== undefined) updates.fieldReport = fieldReport;

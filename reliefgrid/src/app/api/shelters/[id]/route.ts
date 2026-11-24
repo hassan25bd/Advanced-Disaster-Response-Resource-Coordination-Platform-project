@@ -8,7 +8,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     await requireAuth();
     const shelter = await prisma.shelter.findUnique({
       where: { id },
-      include: { manager: true, occupancyLogs: { orderBy: { timestamp: "desc" } } },
+      include: { manager: { select: { id: true, name: true, email: true } }, occupancyLogs: { orderBy: { timestamp: "desc" } } },
     });
     if (!shelter) return NextResponse.json({ error: "Shelter not found" }, { status: 404 });
     return NextResponse.json(shelter);
@@ -24,7 +24,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const shelter = await prisma.shelter.findUnique({ where: { id } });
     if (!shelter) return NextResponse.json({ error: "Shelter not found" }, { status: 404 });
 
-    if (user.role !== "SYSTEM_ADMIN" && shelter.managerId !== user.id) {
+    if (user.role === "SHELTER_MANAGER" && shelter.managerId !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -38,20 +38,44 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (totalCapacity !== undefined) updates.totalCapacity = totalCapacity;
     if (facilities !== undefined) updates.facilities = facilities;
     if (status !== undefined) updates.status = status;
-    if (managerId !== undefined) updates.managerId = managerId;
-
-    let newOccupancy = shelter.currentOccupancy;
-    if (currentOccupancy !== undefined) {
-      if (currentOccupancy < 0) return NextResponse.json({ error: "Occupancy cannot be negative" }, { status: 400 });
-      if (currentOccupancy > (totalCapacity !== undefined ? totalCapacity : shelter.totalCapacity)) {
-        return NextResponse.json({ error: "Occupancy exceeds shelter capacity" }, { status: 400 });
+    if (managerId !== undefined) {
+      if (user.role === "SHELTER_MANAGER") {
+        return NextResponse.json({ error: "Only administrators and coordinators can change the shelter manager" }, { status: 403 });
       }
-      newOccupancy = currentOccupancy;
+      updates.managerId = managerId;
+    }
+
+    if (totalCapacity !== undefined && (!Number.isSafeInteger(totalCapacity) || totalCapacity < 0)) {
+      return NextResponse.json({ error: "Capacity must be a non-negative integer" }, { status: 400 });
+    }
+    if (currentOccupancy !== undefined && (!Number.isSafeInteger(currentOccupancy) || currentOccupancy < 0)) {
+      return NextResponse.json({ error: "Occupancy must be a non-negative integer" }, { status: 400 });
+    }
+    const newOccupancy = currentOccupancy !== undefined ? currentOccupancy : shelter.currentOccupancy;
+    const newCapacity = totalCapacity !== undefined ? totalCapacity : shelter.totalCapacity;
+    if (newOccupancy > newCapacity) {
+      return NextResponse.json({ error: "Occupancy exceeds shelter capacity" }, { status: 400 });
+    }
+    if (currentOccupancy !== undefined) {
       updates.currentOccupancy = currentOccupancy;
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const s = await tx.shelter.update({ where: { id }, data: updates });
+      const result = await tx.shelter.updateMany({
+        where: {
+          id,
+          totalCapacity: shelter.totalCapacity,
+          currentOccupancy: shelter.currentOccupancy,
+          managerId: shelter.managerId,
+        },
+        data: updates,
+      });
+      if (result.count !== 1) {
+        const error = new Error("Shelter changed; reload and try again") as Error & { status: number };
+        error.status = 409;
+        throw error;
+      }
+      const s = await tx.shelter.findUniqueOrThrow({ where: { id } });
       if (currentOccupancy !== undefined && currentOccupancy !== shelter.currentOccupancy) {
         await tx.shelterOccupancyLog.create({
           data: {

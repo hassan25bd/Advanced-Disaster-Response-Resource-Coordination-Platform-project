@@ -5,12 +5,15 @@ import prisma from "@/lib/prisma";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await requireAuth();
+    const user = await requireAuth();
     const resource = await prisma.resource.findUnique({
       where: { id },
       include: { organization: true, stockHistory: { orderBy: { timestamp: "desc" }, take: 50 }, allocations: true },
     });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (user.role === "RELIEF_ORGANIZATION" && resource.organizationId !== user.organizationId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json(resource);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
@@ -51,10 +54,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await requireRole("SYSTEM_ADMIN", "RELIEF_ORGANIZATION");
+    const user = await requireRole("SYSTEM_ADMIN", "RELIEF_ORGANIZATION");
     const resource = await prisma.resource.findUnique({ where: { id } });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
-    await prisma.resource.delete({ where: { id } });
+    if (user.role === "RELIEF_ORGANIZATION" && resource.organizationId !== user.organizationId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const deleted = await prisma.resource.deleteMany({
+      where: { id, organizationId: resource.organizationId, allocations: { none: {} } },
+    });
+    if (deleted.count !== 1) {
+      return NextResponse.json({ error: "Resources with allocations cannot be deleted" }, { status: 409 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Forbidden" }, { status: err.status || 403 });

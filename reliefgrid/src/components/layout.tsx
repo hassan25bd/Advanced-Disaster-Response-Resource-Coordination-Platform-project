@@ -63,17 +63,17 @@ const NAV: Record<string, { label: string; href: string }[]> = {
 export function Sidebar() {
   const { data: session } = useSession();
   const pathname = usePathname();
-  const role = (session?.user as any)?.role || "VOLUNTEER";
+  const role = (session?.user as { role?: string } | undefined)?.role || "VOLUNTEER";
   const items = NAV[role] || NAV.VOLUNTEER;
 
   return (
-    <aside className="fixed left-0 top-16 bottom-0 w-64 border-r border-slate-200 bg-white">
-      <div className="p-4">
-        <nav className="space-y-1">
+    <aside className="shrink-0 border-b border-slate-200 bg-white md:w-64 md:overflow-y-auto md:border-b-0 md:border-r">
+      <div className="p-2 md:p-4">
+        <nav aria-label="Main navigation" className="flex gap-1 overflow-x-auto md:block md:space-y-1">
           {items.map((item) => {
             const active = pathname === item.href;
             return (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              <Link key={item.href} href={item.href} className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 active ? "bg-rose-50 text-rose-700" : "text-slate-600 hover:bg-slate-50"
               }`}>
                 {item.label}
@@ -87,12 +87,17 @@ export function Sidebar() {
 }
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname === "/login" || pathname === "/register") {
+    return <main className="min-h-screen bg-slate-50">{children}</main>;
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
+      <Navbar />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <Sidebar />
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

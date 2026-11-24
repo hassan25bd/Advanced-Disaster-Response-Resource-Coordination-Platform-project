@@ -3,21 +3,37 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { apiFetch, statusLabel } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import {
   BarChart, Bar, PieChart, Pie, LineChart, Line, ResponsiveContainer, Cell,
 } from "recharts";
 
 const COLORS = ["#ec4899", "#f59e0b", "#3b82f6", "#10b981", "#ef4444"];
 
+type DashboardStats = {
+  activeIncidents: number;
+  totalAffected: number;
+  pendingRequests: number;
+  availableResources: number;
+  activeShelters: number;
+  volunteerAvailability: number;
+  categoryDist: { category: string; _count: number }[];
+  requestTrends: { createdAt: string; _count: number }[];
+  resourceDist: { category: string; _sum: { availableQuantity: number | null } }[];
+};
+
 export default function DashboardPage() {
   const { data: session } = useSession();
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const user = (session?.user as any) || {};
+  const [error, setError] = useState(false);
+  const role = (session?.user as { role?: string } | undefined)?.role;
 
   useEffect(() => {
-    apiFetch("/api/analytics").then(setStats).finally(() => setLoading(false));
+    apiFetch("/api/analytics")
+      .then(setStats)
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return (
@@ -29,6 +45,8 @@ export default function DashboardPage() {
     </div>
   );
 
+  if (error) return <p role="alert" className="text-rose-700">Unable to load dashboard data. Please try again.</p>;
+
   const cats = stats?.categoryDist || [];
   const trends = stats?.requestTrends || [];
   const resDist = stats?.resourceDist || [];
@@ -38,7 +56,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Emergency Dashboard</h1>
-          <p className="text-slate-500 text-sm">Operational overview for {ROLE_LABEL[user.role] || user.role}</p>
+          <p className="text-slate-500 text-sm">Operational overview for {role ? ROLE_LABEL[role] || role : "your role"}</p>
         </div>
       </div>
 
@@ -55,10 +73,10 @@ export default function DashboardPage() {
         <Card className="lg:col-span-1">
           <CardHeader><CardTitle>Incident Category Distribution</CardTitle></CardHeader>
           <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            {cats.length === 0 ? <p className="text-sm text-slate-500">No incidents to display yet.</p> : <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={cats.map((c: any, i: number) => ({ name: statusLabel(c.category), value: c._count, fill: COLORS[i % COLORS.length] }))}
+                  data={cats.map((c, i) => ({ name: statusLabel(c.category), value: c._count, fill: COLORS[i % COLORS.length] }))}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -67,21 +85,21 @@ export default function DashboardPage() {
                   fill="#8884d8"
                   label
                 >
-                  {cats.map((c: any, i: number) => <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />)}
+                  {cats.map((c, i) => <Cell key={c.category} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
               </PieChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer>}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader><CardTitle>Resource Distribution by Category</CardTitle></CardHeader>
           <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={resDist.map((r: any, i: number) => ({ name: statusLabel(r.category), value: r._sum?.availableQuantity ?? 0 }))}>
+            {resDist.length === 0 ? <p className="text-sm text-slate-500">No resources to display yet.</p> : <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={resDist.map((r) => ({ name: statusLabel(r.category), value: r._sum?.availableQuantity ?? 0 }))}>
                 <Bar dataKey="value" fill="#ec4899" radius={[4, 4, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer>}
           </CardContent>
         </Card>
       </div>
@@ -89,11 +107,11 @@ export default function DashboardPage() {
       <Card>
         <CardHeader><CardTitle>Emergency Request Trends</CardTitle></CardHeader>
         <CardContent className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trends.map((t: any, i: number) => ({ name: `Day ${i}`, value: t._count }))}>
+          {trends.length === 0 ? <p className="text-sm text-slate-500">No emergency requests to display yet.</p> : <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={trends.map((t, i) => ({ name: `Day ${i}`, value: t._count }))}>
               <Line type="monotone" dataKey="value" stroke="#ec4899" strokeWidth={2} dot={false} />
             </LineChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
         </CardContent>
       </Card>
     </div>
