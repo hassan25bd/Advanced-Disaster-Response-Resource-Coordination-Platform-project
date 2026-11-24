@@ -1,0 +1,408 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  SYSTEM_ADMIN
+  EMERGENCY_COORDINATOR
+  RELIEF_ORGANIZATION
+  VOLUNTEER
+  SHELTER_MANAGER
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  OFF_DUTY
+}
+
+enum IncidentCategory {
+  FLOOD
+  CYCLONE
+  EARTHQUAKE
+  FIRE
+  LANDSLIDE
+  INFRASTRUCTURE_FAILURE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  REPORTED
+  VERIFIED
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum RequestType {
+  FOOD
+  WATER
+  MEDICAL
+  SHELTER
+  RESCUE
+  TRANSPORTATION
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RequestStatus {
+  PENDING
+  VERIFIED
+  ALLOCATED
+  IN_TRANSIT
+  COMPLETED
+  REJECTED
+}
+
+enum ResourceCategory {
+  FOOD_PACKAGES
+  DRINKING_WATER
+  MEDICAL_SUPPLIES
+  EMERGENCY_KITS
+  BLANKETS
+  RESCUE_EQUIPMENT
+  TRANSPORTATION
+}
+
+enum StockChangeType {
+  RESTOCK
+  ALLOCATED
+  DISTRIBUTED
+  ADJUSTMENT
+}
+
+enum AllocationStatus {
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum ShelterStatus {
+  OPEN
+  FULL
+  CLOSED
+  MAINTENANCE
+}
+
+enum TeamStatus {
+  ACTIVE
+  DEPLOYED
+  STANDBY
+}
+
+enum TaskStatus {
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Organization {
+  id             String   @id @default(cuid())
+  name           String
+  type           String
+  registrationNo String   @unique
+  verified       Boolean  @default(false)
+  contactEmail   String
+  address        String
+  createdAt      DateTime @default(now())
+
+  users       User[]
+  resources   Resource[]
+  allocations ResourceAllocation[]
+  teams       Team[]
+
+  @@index([verified])
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  name               String
+  email              String             @unique
+  passwordHash       String
+  role               Role               @default(VOLUNTEER)
+  organizationId     String?
+  phone              String?
+  availabilityStatus AvailabilityStatus @default(OFF_DUTY)
+  avatar             String?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+
+  organization    Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  incidents       Incident[]            @relation("IncidentReportedBy")
+  coordinated     Incident[]            @relation("IncidentCoordinator")
+  incidentHistory IncidentHistory[]
+  allocations     ResourceAllocation[]  @relation("AllocationCoordinator")
+  shelters        Shelter[]             @relation("ShelterManager")
+  occupancyLogs   ShelterOccupancyLog[]
+  teamsLed        Team[]                @relation("TeamLeader")
+  tasks           VolunteerTask[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+
+  @@index([role])
+  @@index([availabilityStatus])
+  @@index([organizationId])
+}
+
+model Incident {
+  id                 String           @id @default(cuid())
+  title              String
+  description        String
+  category           IncidentCategory
+  location           String
+  latitude           Float
+  longitude          Float
+  severity           Severity         @default(MEDIUM)
+  priorityScore      Int              @default(0)
+  affectedPopulation Int              @default(0)
+  status             IncidentStatus   @default(REPORTED)
+  imageUrl           String?
+  reportedById       String
+  coordinatorId      String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  reportedBy  User               @relation("IncidentReportedBy", fields: [reportedById], references: [id], onDelete: Cascade)
+  coordinator User?              @relation("IncidentCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+  history     IncidentHistory[]
+  requests    EmergencyRequest[]
+  tasks       VolunteerTask[]
+
+  @@index([status])
+  @@index([severity])
+  @@index([category])
+  @@index([reportedById])
+  @@index([coordinatorId])
+}
+
+model IncidentHistory {
+  id            String   @id @default(cuid())
+  incidentId    String
+  action        String
+  previousValue String?
+  newValue      String?
+  changedById   String
+  timestamp     DateTime @default(now())
+
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  changedBy User     @relation(fields: [changedById], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@index([changedById])
+  @@index([timestamp])
+}
+
+model EmergencyRequest {
+  id             String        @id @default(cuid())
+  incidentId     String
+  type           RequestType
+  quantity       Int
+  location       String
+  latitude       Float
+  longitude      Float
+  priority       Priority      @default(MEDIUM)
+  priorityScore  Int           @default(0)
+  affectedPeople Int           @default(0)
+  description    String?
+  status         RequestStatus @default(PENDING)
+  duplicateFlag  Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  incident    Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  allocations ResourceAllocation[]
+
+  @@index([incidentId])
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([duplicateFlag])
+}
+
+model Resource {
+  id                String         @id @default(cuid())
+  organizationId    String
+  name              String
+  category          ResourceCategory
+  totalQuantity     Int
+  availableQuantity Int
+  unit              String
+  storageLocation   String
+  latitude          Float
+  longitude         Float
+  updatedAt         DateTime       @updatedAt
+
+  organization Organization?         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockHistory ResourceStockHistory[]
+  allocations  ResourceAllocation[]
+
+  @@index([organizationId])
+  @@index([category])
+}
+
+model ResourceStockHistory {
+  id           String          @id @default(cuid())
+  resourceId   String
+  changeAmount Int
+  type         StockChangeType
+  notes        String?
+  timestamp    DateTime        @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+  @@index([type])
+  @@index([timestamp])
+}
+
+model ResourceAllocation {
+  id                 String           @id @default(cuid())
+  requestId          String
+  resourceId         String
+  organizationId     String
+  coordinatorId      String
+  allocatedQuantity  Int
+  status             AllocationStatus @default(ASSIGNED)
+  qrVerificationCode String           @unique
+  allocatedAt        DateTime         @default(now())
+  deliveredAt        DateTime?
+
+  request      EmergencyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  resource     Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  coordinator  User             @relation("AllocationCoordinator", fields: [coordinatorId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([resourceId])
+  @@index([organizationId])
+  @@index([coordinatorId])
+  @@index([status])
+}
+
+model Shelter {
+  id               String        @id @default(cuid())
+  name             String
+  location         String
+  latitude         Float
+  longitude        Float
+  totalCapacity    Int
+  currentOccupancy Int           @default(0)
+  facilities       String[]
+  status           ShelterStatus @default(CLOSED)
+  managerId        String?
+  updatedAt        DateTime      @updatedAt
+
+  manager       User?                 @relation("ShelterManager", fields: [managerId], references: [id], onDelete: SetNull)
+  occupancyLogs ShelterOccupancyLog[]
+
+  @@index([status])
+  @@index([managerId])
+}
+
+model ShelterOccupancyLog {
+  id                String   @id @default(cuid())
+  shelterId         String
+  previousOccupancy Int
+  newOccupancy      Int
+  notes             String?
+  updatedById       String
+  timestamp         DateTime @default(now())
+
+  shelter   Shelter @relation(fields: [shelterId], references: [id], onDelete: Cascade)
+  updatedBy User    @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+
+  @@index([shelterId])
+  @@index([updatedById])
+  @@index([timestamp])
+}
+
+model Team {
+  id             String    @id @default(cuid())
+  name           String
+  organizationId String
+  leaderId       String?
+  status         TeamStatus @default(STANDBY)
+  createdAt      DateTime  @default(now())
+
+  organization Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leader       User?           @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+  tasks        VolunteerTask[]
+
+  @@index([organizationId])
+  @@index([leaderId])
+  @@index([status])
+}
+
+model VolunteerTask {
+  id          String     @id @default(cuid())
+  title       String
+  description String
+  incidentId  String
+  teamId      String?
+  volunteerId String?
+  location    String
+  latitude    Float
+  longitude   Float
+  status      TaskStatus @default(ASSIGNED)
+  fieldReport String?
+  fieldPhotos String[]
+  assignedAt  DateTime   @default(now())
+  completedAt DateTime?
+
+  incident  Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  team      Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  volunteer User?     @relation(fields: [volunteerId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId])
+  @@index([teamId])
+  @@index([volunteerId])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    String?
+  timestamp  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([timestamp])
+}
