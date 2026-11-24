@@ -79,6 +79,7 @@ AUTH_SECRET="change-in-production-min-32-chars"
 NEXTAUTH_URL="http://localhost:3000"
 ```
 For production, configure both variables in the hosting provider. Use a strong random `AUTH_SECRET` and set `NEXTAUTH_URL` to the canonical deployed URL; changing the secret signs out existing sessions.
+For serverless production deployments, set `DATABASE_URL_POOLED` to the database provider's pooled connection URL. The runtime prefers it and limits each function instance to one connection; `DATABASE_URL` remains the fallback for local development.
 
 ### Database
 ```bash

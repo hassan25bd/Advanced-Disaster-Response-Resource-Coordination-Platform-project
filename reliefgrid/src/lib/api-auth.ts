@@ -9,10 +9,26 @@ export async function getServerSession() {
 export async function requireAuth() {
   const session = await getServerSession();
   const sessionUser = session?.user as { id?: string } | undefined;
-  const user = sessionUser?.id ? await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: { id: true, name: true, email: true, role: true, organizationId: true, isActive: true },
-  }) : null;
+  let user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    organizationId: string | null;
+    isActive: boolean;
+  } | null = null;
+  if (sessionUser?.id) {
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: sessionUser.id },
+        select: { id: true, name: true, email: true, role: true, organizationId: true, isActive: true },
+      });
+    } catch {
+      const error = new Error("Authentication service is temporarily unavailable") as Error & { status?: number };
+      error.status = 503;
+      throw error;
+    }
+  }
   if (!user?.isActive) {
     const error = new Error("Unauthorized") as Error & { status?: number };
     error.status = 401;

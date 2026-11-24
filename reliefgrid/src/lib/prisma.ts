@@ -2,9 +2,12 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
-const connectionString = `${process.env.DATABASE_URL}`;
+const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL_POOLED or DATABASE_URL must be configured.");
+}
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({ connectionString, max: 1 });
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
