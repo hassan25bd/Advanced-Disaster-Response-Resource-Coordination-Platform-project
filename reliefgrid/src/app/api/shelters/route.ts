@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "SHELTER_MANAGER");
+    const user = await requireAuth();
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
     const status = searchParams.get("status") || undefined;
     const search = searchParams.get("search")?.trim() || "";
 
-    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
-      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-    }
-    const where: any = user.role === "SHELTER_MANAGER"
+    const where: any = {};
+    const organizationScope = user.role === "SHELTER_MANAGER"
       ? { managerId: user.id }
-      : user.role === "RELIEF_ORGANIZATION"
+      : user.role === "RELIEF_ORGANIZATION" && user.organizationId
         ? { manager: { organizationId: user.organizationId } }
-        : {};
+        : undefined;
+    if (user.role === "SHELTER_MANAGER" || user.role === "RELIEF_ORGANIZATION" || user.role === "VOLUNTEER") {
+      includeDemoRecords(where, organizationScope, demoDataWhere.shelter);
+    }
     if (status) where.status = status;
     if (search) where.OR = [
       { name: { contains: search, mode: "insensitive" } },
@@ -36,7 +38,15 @@ export async function GET(req: Request) {
       prisma.shelter.count({ where }),
     ]);
 
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data: data.map((shelter) => ({
+        ...shelter,
+        isDemo: shelter.name.startsWith("RGDEMO-"),
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -50,6 +60,9 @@ export async function POST(req: Request) {
 
     if (typeof name !== "string" || !name.trim() || typeof location !== "string" || !location.trim() || totalCapacity === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (name.trim().startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
     }
     if (!Number.isSafeInteger(totalCapacity) || totalCapacity < 0) {
       return NextResponse.json({ error: "Capacity must be a non-negative integer" }, { status: 400 });
@@ -66,9 +79,12 @@ export async function POST(req: Request) {
     if (managerId && user.role !== "SHELTER_MANAGER") {
       const manager = await prisma.user.findFirst({
         where: { id: managerId, role: "SHELTER_MANAGER", isActive: true },
-        select: { id: true },
+        select: { id: true, email: true },
       });
       if (!manager) return NextResponse.json({ error: "Select an active shelter manager" }, { status: 400 });
+      if (manager.email.startsWith("rgdemo-") && manager.email.endsWith("@example.invalid")) {
+        return NextResponse.json({ error: "Shared demo accounts cannot manage live shelters" }, { status: 409 });
+      }
     }
 
     const shelter = await prisma.$transaction(async (tx) => {

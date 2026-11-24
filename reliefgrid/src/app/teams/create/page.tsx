@@ -7,7 +7,7 @@ import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui";
 
 type Organization = { id: string; name: string };
-type Volunteer = { id: string; name: string };
+type Volunteer = { id: string; name: string; isDemo?: boolean };
 
 export default function CreateTeamPage() {
   const { data: session } = useSession();
@@ -27,7 +27,7 @@ export default function CreateTeamPage() {
       apiFetch("/api/users?role=VOLUNTEER&pageSize=100"),
     ]).then(([orgs, users]) => {
       setOrganizations(orgs.data);
-      setVolunteers(users.data);
+      setVolunteers(users.data.filter((volunteer: Volunteer) => !volunteer.isDemo));
       if (orgs.data.length === 1) setForm((current) => ({ ...current, organizationId: orgs.data[0].id }));
       setError("");
     }).catch((err) => setError(err instanceof Error ? err.message : "Unable to load team options."))

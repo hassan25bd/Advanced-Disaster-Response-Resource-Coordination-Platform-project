@@ -1,23 +1,21 @@
 ﻿import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
-    if (user.role === "EMERGENCY_COORDINATOR" && !user.organizationId) {
-      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-    }
+    const user = await requireAuth();
     const resource = await prisma.resource.findUnique({
       where: { id },
       include: { organization: true, stockHistory: { orderBy: { timestamp: "desc" }, take: 50 }, allocations: true },
     });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
-    if (user.role !== "SYSTEM_ADMIN" && resource.organizationId !== user.organizationId) {
+    const isDemo = resource.storageLocation.startsWith("RGDEMO-");
+    if (!isDemo && user.role !== "SYSTEM_ADMIN" && resource.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json(resource);
+    return NextResponse.json({ ...resource, isDemo });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -29,6 +27,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
     const resource = await prisma.resource.findUnique({ where: { id } });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (resource.storageLocation.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     if (user.role !== "SYSTEM_ADMIN" && resource.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -36,6 +37,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = await req.json();
     const { name, category, totalQuantity, availableQuantity, unit, storageLocation, latitude, longitude } = body || {};
+    if (typeof storageLocation === "string" && storageLocation.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
+    }
     const total = totalQuantity === undefined ? resource.totalQuantity : totalQuantity;
     const available = availableQuantity === undefined ? resource.availableQuantity : availableQuantity;
     if (!Number.isSafeInteger(total) || total < 0 || !Number.isSafeInteger(available) ||
@@ -101,6 +105,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const user = await requireRole("SYSTEM_ADMIN", "RELIEF_ORGANIZATION");
     const resource = await prisma.resource.findUnique({ where: { id } });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (resource.storageLocation.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records cannot be deleted" }, { status: 409 });
+    }
     if (user.role === "RELIEF_ORGANIZATION" && resource.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

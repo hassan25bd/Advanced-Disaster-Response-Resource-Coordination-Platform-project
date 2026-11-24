@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "VOLUNTEER");
+    const user = await requireAuth();
     const team = await prisma.team.findUnique({
       where: { id },
       include: {
@@ -21,16 +21,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
-    if (user.role === "RELIEF_ORGANIZATION" && team.organizationId !== user.organizationId) {
+    const isDemo = team.name.startsWith("RGDEMO-");
+    const isOrganization = user.role === "RELIEF_ORGANIZATION" && team.organizationId === user.organizationId;
+    const isCoordinator = user.role === "EMERGENCY_COORDINATOR" && !!user.organizationId && team.organizationId === user.organizationId;
+    const isAssignedVolunteer = user.role === "VOLUNTEER" && team.tasks.some((task) => task.volunteerId === user.id);
+    if (!isDemo && user.role !== "SYSTEM_ADMIN" && !isOrganization && !isCoordinator && !isAssignedVolunteer) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (user.role === "EMERGENCY_COORDINATOR" && (!user.organizationId || team.organizationId !== user.organizationId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    if (user.role === "VOLUNTEER" && !team.tasks.some((task) => task.volunteerId === user.id)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    return NextResponse.json(team);
+    return NextResponse.json({ ...team, isDemo });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -42,6 +40,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
     const team = await prisma.team.findUnique({ where: { id } });
     if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
+    if (team.name.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
     if (user.role !== "SYSTEM_ADMIN" && team.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -51,15 +52,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (name !== undefined && (typeof name !== "string" || !name.trim())) {
       return NextResponse.json({ error: "Team name cannot be empty" }, { status: 400 });
     }
+    if (typeof name === "string" && name.trim().startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
+    }
     if (status !== undefined && !["ACTIVE", "DEPLOYED", "STANDBY"].includes(status)) {
       return NextResponse.json({ error: "Invalid team status" }, { status: 400 });
     }
     if (leaderId) {
       const leader = await prisma.user.findFirst({
         where: { id: leaderId, role: "VOLUNTEER", organizationId: team.organizationId, isActive: true },
-        select: { id: true },
+        select: { id: true, email: true },
       });
       if (!leader) return NextResponse.json({ error: "Team leader must be an active volunteer in this organization" }, { status: 400 });
+      if (leader.email.startsWith("rgdemo-") && leader.email.endsWith("@example.invalid")) {
+        return NextResponse.json({ error: "Shared demo volunteers cannot be assigned to live teams" }, { status: 409 });
+      }
     }
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name.trim();

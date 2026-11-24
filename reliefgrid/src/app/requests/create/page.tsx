@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Textarea } from "@/components/ui";
 import { apiFetch, statusLabel } from "@/lib/api";
 
-type Incident = { id: string; title: string };
+type Incident = { id: string; title: string; isDemo?: boolean };
 
 export default function CreateRequestPage() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function CreateRequestPage() {
 
   useEffect(() => {
     apiFetch("/api/incidents?pageSize=100")
-      .then((result: { data: Incident[] }) => setIncidents(result.data))
+      .then((result: { data: Incident[] }) => setIncidents(result.data.filter((incident) => !incident.isDemo)))
       .catch(() => setError("Unable to load incidents. Please try again."))
       .finally(() => setLoadingIncidents(false));
   }, []);

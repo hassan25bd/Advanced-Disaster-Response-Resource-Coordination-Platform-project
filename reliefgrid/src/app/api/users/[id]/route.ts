@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { isDemoAccount } from "@/lib/demo-data";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,12 +17,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
-    if (user.role !== "SYSTEM_ADMIN" && target.id !== user.id &&
+    const isDemo = isDemoAccount(target.email);
+    if (!isDemo && user.role !== "SYSTEM_ADMIN" && target.id !== user.id &&
         !(["EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION"].includes(user.role) &&
           user.organizationId && target.organizationId === user.organizationId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json(target);
+    return NextResponse.json({ ...target, isDemo });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -38,6 +40,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const target = await prisma.user.findUnique({ where: { id } });
     if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (isDemoAccount(target.email)) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
     const body = await req.json();
     const { name, email, role, organizationId, phone, availabilityStatus, isActive } = body || {};
     const roles = ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "VOLUNTEER", "SHELTER_MANAGER"];
@@ -50,6 +55,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         (isActive !== undefined && typeof isActive !== "boolean") ||
         (organizationId !== undefined && organizationId !== null && typeof organizationId !== "string")) {
       return NextResponse.json({ error: "Invalid user update" }, { status: 400 });
+    }
+    if (typeof email === "string" && isDemoAccount(email.trim().toLowerCase())) {
+      return NextResponse.json({ error: "This email prefix is reserved for shared demo records" }, { status: 400 });
     }
     if (id === user.id && (role !== undefined && role !== "SYSTEM_ADMIN" || isActive === false)) {
       return NextResponse.json({ error: "You cannot remove your own administrator access" }, { status: 400 });

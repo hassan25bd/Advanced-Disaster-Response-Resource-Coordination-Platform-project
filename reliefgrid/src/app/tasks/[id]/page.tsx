@@ -8,7 +8,7 @@ import { MAX_TASK_FIELD_PHOTOS, readImageFile } from "@/lib/image-upload";
 import { Button, Card, CardContent, CardHeader, CardTitle, Select } from "@/components/ui";
 
 type Task = {
-  id: string; title: string; description: string; location: string; status: string;
+  id: string; isDemo?: boolean; title: string; description: string; location: string; status: string;
   fieldReport: string | null; fieldPhotos: string[]; assignedAt: string; completedAt: string | null;
   history: { id: string; action: string; details: string | null; timestamp: string; user: { name: string } }[];
   incident: { id: string; title: string; location: string } | null;
@@ -94,7 +94,7 @@ export default function TaskDetailsPage() {
   if (!task) return <p role="alert" className="text-rose-700">{error || "Task not found."}</p>;
   const isVolunteer = role === "VOLUNTEER";
   const isOrganization = role === "RELIEF_ORGANIZATION";
-  const canUpdate = isVolunteer || role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION";
+  const canUpdate = !task.isDemo && (isVolunteer || role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION");
   const completed = task.status === "COMPLETED";
   const statuses = isVolunteer
     ? task.status === "ASSIGNED" ? ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "COMPLETED"]
@@ -106,6 +106,7 @@ export default function TaskDetailsPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">{task.title}</h1><p className="text-sm text-slate-500">{statusLabel(task.status)} · {task.location || "Location not set"}</p></div><Button onClick={() => router.push("/tasks")}>Back to tasks</Button></div>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {task.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
       <Card><CardHeader><CardTitle>Assignment details</CardTitle></CardHeader><CardContent className="grid gap-3 text-sm sm:grid-cols-2">
         <p><strong>Incident:</strong> {task.incident?.title || "—"}</p><p><strong>Incident location:</strong> {task.incident?.location || "—"}</p>
         <p><strong>Team:</strong> {task.team?.name || "Unassigned"} {task.team?.organization?.name ? `· ${task.team.organization.name}` : ""}</p><p><strong>Volunteer:</strong> {task.volunteer?.name || "Unassigned"}</p>

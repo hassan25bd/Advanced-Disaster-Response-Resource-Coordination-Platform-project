@@ -1,25 +1,30 @@
 ﻿import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
+    const user = await requireAuth();
     const allocation = await prisma.resourceAllocation.findUnique({
       where: { id },
       include: {
-        request: { include: { incident: { select: { id: true, title: true, location: true } } } },
+        request: { include: { incident: { select: { id: true, title: true, location: true, description: true } } } },
         resource: true,
         organization: { select: { id: true, name: true } },
         coordinator: { select: { id: true, name: true, email: true } },
       },
     });
     if (!allocation) return NextResponse.json({ error: "Allocation not found" }, { status: 404 });
-    if (user.role === "RELIEF_ORGANIZATION" && allocation.organizationId !== user.organizationId) {
+    const isDemo = allocation.resource.storageLocation.startsWith("RGDEMO-") ||
+      allocation.request.incident.description.startsWith("[RGDEMO-");
+    if (!isDemo && user.role === "RELIEF_ORGANIZATION" && allocation.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (user.role === "EMERGENCY_COORDINATOR" && (!user.organizationId || allocation.organizationId !== user.organizationId)) {
+    if (!isDemo && user.role === "EMERGENCY_COORDINATOR" && (!user.organizationId || allocation.organizationId !== user.organizationId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (!isDemo && !["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION"].includes(user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const history = await prisma.activityLog.findMany({
@@ -27,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       orderBy: { timestamp: "desc" },
       include: { user: { select: { name: true } } },
     });
-    return NextResponse.json({ ...allocation, history });
+    return NextResponse.json({ ...allocation, isDemo, history });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -39,9 +44,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
     const allocation = await prisma.resourceAllocation.findUnique({
       where: { id },
-      include: { resource: true, request: true },
+      include: {
+        resource: true,
+        request: { include: { incident: { select: { description: true } } } },
+      },
     });
     if (!allocation) return NextResponse.json({ error: "Allocation not found" }, { status: 404 });
+    if (allocation.resource.storageLocation.startsWith("RGDEMO-") || allocation.request.incident.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     if (user.role !== "SYSTEM_ADMIN" && allocation.organizationId !== user.organizationId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

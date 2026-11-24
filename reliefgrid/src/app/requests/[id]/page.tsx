@@ -8,6 +8,7 @@ import { apiFetch, statusLabel } from "@/lib/api";
 
 type RequestDetails = {
   id: string; type: string; quantity: number; location: string; priority: string;
+  isDemo?: boolean;
   status: string; affectedPeople: number; description: string | null; createdAt: string;
   duplicateFlag: boolean;
   incident: { title: string };
@@ -54,6 +55,7 @@ export default function RequestDetailsPage() {
         <Button onClick={() => router.push("/requests")}>Back to requests</Button>
       </div>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {request.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
       {request.duplicateFlag && <p role="status" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">This request was recorded but rejected as a possible duplicate.</p>}
       <Card>
         <CardHeader><CardTitle>{request.incident.title}</CardTitle></CardHeader>
@@ -67,7 +69,7 @@ export default function RequestDetailsPage() {
             ].map(([label, value]) => <div key={label}><dt className="text-xs uppercase text-slate-500">{label}</dt><dd className="text-slate-900">{value}</dd></div>)}
           </dl>
           <p className="text-sm text-slate-700">{request.description || "No description provided."}</p>
-          {request.status === "PENDING" && role && ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(role) && (
+          {request.status === "PENDING" && !request.isDemo && role && ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(role) && (
             <div className="flex gap-3">
               <Button disabled={saving} onClick={() => verify("VERIFIED")} className="bg-rose-600 text-white hover:bg-rose-700">Verify request</Button>
               <Button disabled={saving} onClick={() => verify("REJECTED")} className="border border-slate-300">Reject request</Button>

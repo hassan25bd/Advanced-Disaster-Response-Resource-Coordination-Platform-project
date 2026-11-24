@@ -1,26 +1,31 @@
 ﻿import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, isDemoAccount } from "@/lib/demo-data";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "SHELTER_MANAGER");
-    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
-      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-    }
+    const user = await requireAuth();
+    const organizationScope = user.role === "RELIEF_ORGANIZATION" && user.organizationId
+      ? { manager: { organizationId: user.organizationId } }
+      : user.role === "SHELTER_MANAGER" ? { managerId: user.id } : undefined;
+    const where = {
+      id,
+      ...(["RELIEF_ORGANIZATION", "SHELTER_MANAGER", "VOLUNTEER"].includes(user.role)
+        ? { OR: [...(organizationScope ? [organizationScope] : []), demoDataWhere.shelter] }
+        : {}),
+    };
     const shelter = await prisma.shelter.findFirst({
-      where: {
-        id,
-        ...(user.role === "RELIEF_ORGANIZATION" ? { manager: { organizationId: user.organizationId } } : {}),
-      },
+      where,
       include: { manager: { select: { id: true, name: true, email: true } }, occupancyLogs: { orderBy: { timestamp: "desc" } } },
     });
     if (!shelter) return NextResponse.json({ error: "Shelter not found" }, { status: 404 });
-    if (user.role === "SHELTER_MANAGER" && shelter.managerId !== user.id) {
+    const isDemo = shelter.name.startsWith("RGDEMO-");
+    if (!isDemo && user.role === "SHELTER_MANAGER" && shelter.managerId !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json(shelter);
+    return NextResponse.json({ ...shelter, isDemo });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -32,6 +37,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "SHELTER_MANAGER");
     const shelter = await prisma.shelter.findUnique({ where: { id } });
     if (!shelter) return NextResponse.json({ error: "Shelter not found" }, { status: 404 });
+    if (shelter.name.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     if (user.role === "SHELTER_MANAGER" && shelter.managerId !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -42,6 +50,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const updates: any = {};
     if (name !== undefined && (typeof name !== "string" || !name.trim())) {
       return NextResponse.json({ error: "Shelter name cannot be empty" }, { status: 400 });
+    }
+    if (typeof name === "string" && name.trim().startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
     }
     if (location !== undefined && (typeof location !== "string" || !location.trim())) {
       return NextResponse.json({ error: "Shelter location cannot be empty" }, { status: 400 });
@@ -60,9 +71,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (managerId) {
         const manager = await prisma.user.findFirst({
           where: { id: managerId, role: "SHELTER_MANAGER", isActive: true },
-          select: { id: true },
+          select: { id: true, email: true },
         });
         if (!manager) return NextResponse.json({ error: "Select an active shelter manager" }, { status: 400 });
+        if (isDemoAccount(manager.email)) {
+          return NextResponse.json({ error: "Shared demo accounts cannot manage live shelters" }, { status: 409 });
+        }
       }
       updates.managerId = managerId;
     }

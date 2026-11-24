@@ -1,37 +1,58 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
     const user = await requireAuth();
-    if (user.role === "RELIEF_ORGANIZATION" && !user.organizationId) {
-      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-    }
     const { searchParams } = new URL(req.url);
     const range = searchParams.get("range") || "30d";
     const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
     const from = new Date(Date.now() - days * 86400000);
 
     const organizationScope = user.role === "RELIEF_ORGANIZATION" ? user.organizationId : undefined;
-    const incidentWhere = organizationScope ? {
+    const incidentWhere = user.role === "RELIEF_ORGANIZATION" ? {
       OR: [
-        { reportedBy: { organizationId: organizationScope } },
-        { requests: { some: { allocations: { some: { organizationId: organizationScope } } } } },
+        ...(organizationScope ? [
+          { reportedBy: { organizationId: organizationScope } },
+          { requests: { some: { allocations: { some: { organizationId: organizationScope } } } } },
+        ] : []),
+        demoDataWhere.incident,
       ],
     } : {};
-    const requestWhere = organizationScope ? {
+    const requestWhere = user.role === "RELIEF_ORGANIZATION" ? {
       OR: [
-        { incident: { reportedBy: { organizationId: organizationScope } } },
-        { allocations: { some: { organizationId: organizationScope } } },
+        ...(organizationScope ? [
+          { incident: { reportedBy: { organizationId: organizationScope } } },
+          { allocations: { some: { organizationId: organizationScope } } },
+        ] : []),
+        demoDataWhere.request,
       ],
     } : {};
-    const resourceWhere = organizationScope ? { organizationId: organizationScope } : {};
-    const shelterWhere = organizationScope ? { manager: { organizationId: organizationScope } } : {};
+    const resourceWhere = user.role === "RELIEF_ORGANIZATION" ? {
+      OR: [
+        ...(organizationScope ? [{ organizationId: organizationScope }] : []),
+        demoDataWhere.resource,
+      ],
+    } : {};
+    const shelterWhere = user.role === "RELIEF_ORGANIZATION" ? {
+      OR: [
+        ...(organizationScope ? [{ manager: { organizationId: organizationScope } }] : []),
+        demoDataWhere.shelter,
+      ],
+    } : {};
     const volunteerWhere = {
       role: "VOLUNTEER" as const,
       availabilityStatus: "AVAILABLE" as const,
-      ...(organizationScope ? { organizationId: organizationScope } : {}),
+      ...(user.role === "RELIEF_ORGANIZATION" ? {
+        AND: [{
+          OR: [
+            ...(organizationScope ? [{ organizationId: organizationScope }] : []),
+            demoDataWhere.volunteer,
+          ],
+        }],
+      } : {}),
     };
 
     const [
@@ -45,6 +66,13 @@ export async function GET(req: Request) {
       requestTrendRows,
       resourceDist,
       responseHistory,
+      demoRequests,
+      demoResources,
+      demoShelters,
+      demoVolunteers,
+      demoTeams,
+      demoTasks,
+      demoAllocations,
     ] = await Promise.all([
       prisma.incident.count({ where: { ...incidentWhere, status: { in: ["REPORTED", "VERIFIED", "IN_PROGRESS"] } } }),
       prisma.incident.aggregate({ where: incidentWhere, _sum: { affectedPopulation: true } }),
@@ -68,6 +96,13 @@ export async function GET(req: Request) {
         select: { incidentId: true, timestamp: true },
         orderBy: { timestamp: "asc" },
       }),
+      prisma.emergencyRequest.count({ where: demoDataWhere.request }),
+      prisma.resource.count({ where: demoDataWhere.resource }),
+      prisma.shelter.count({ where: demoDataWhere.shelter }),
+      prisma.user.count({ where: demoDataWhere.volunteer }),
+      prisma.team.count({ where: demoDataWhere.team }),
+      prisma.volunteerTask.count({ where: demoDataWhere.task }),
+      prisma.resourceAllocation.count({ where: demoDataWhere.allocation }),
     ]);
 
     const dailyRequestCounts = new Map<string, number>();
@@ -111,6 +146,15 @@ export async function GET(req: Request) {
       categoryDist,
       requestTrends,
       resourceDist,
+      demoCounts: {
+        requests: demoRequests,
+        resources: demoResources,
+        shelters: demoShelters,
+        volunteers: demoVolunteers,
+        teams: demoTeams,
+        tasks: demoTasks,
+        allocations: demoAllocations,
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });

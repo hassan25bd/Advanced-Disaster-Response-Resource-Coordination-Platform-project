@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui";
 
-type Manager = { id: string; name: string };
+type Manager = { id: string; name: string; isDemo?: boolean };
 
 export default function CreateShelterPage() {
   const { data: session } = useSession();
@@ -24,7 +24,7 @@ export default function CreateShelterPage() {
   useEffect(() => {
     if (!role || role === "SHELTER_MANAGER") return;
     apiFetch("/api/users?role=SHELTER_MANAGER&pageSize=100")
-      .then((result: { data: Manager[] }) => setManagers(result.data))
+      .then((result: { data: Manager[] }) => setManagers(result.data.filter((manager) => !manager.isDemo)))
       .catch((err) => setError(err instanceof Error ? err.message : "Unable to load shelter managers."))
       .finally(() => setLoadingManagers(false));
   }, [role]);

@@ -31,13 +31,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
-    if (user.role === "RELIEF_ORGANIZATION" &&
+    const isDemo = request.incident.description.startsWith("[RGDEMO-");
+    if (!isDemo && user.role === "RELIEF_ORGANIZATION" &&
         request.incident.reportedBy.organizationId !== user.organizationId &&
         !request.allocations.some((allocation) => allocation.organizationId === user.organizationId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({
       ...request,
+      isDemo,
       priorityScore: calculateRequestPriority({
         priority: request.priority,
         affectedPeople: request.affectedPeople,
@@ -59,6 +61,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       include: {
         incident: {
           select: {
+            description: true,
             history: {
               where: { action: "location_risk_assessed" },
               orderBy: { timestamp: "desc" },
@@ -70,6 +73,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    if (request.incident.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const isCoordinator = user.role === "EMERGENCY_COORDINATOR";

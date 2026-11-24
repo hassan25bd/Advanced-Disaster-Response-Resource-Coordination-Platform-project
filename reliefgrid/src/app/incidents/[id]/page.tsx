@@ -35,13 +35,14 @@ export default function IncidentDetailsPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={() => router.push("/incidents")}>Back</Button>
-          {["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user?.role) && (
+          {["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user?.role) && !incident.isDemo && (
             <Button className="bg-rose-600 hover:bg-rose-700" onClick={() => router.push(`/incidents/${params.id}/edit`)}>
               Edit
             </Button>
           )}
         </div>
       </div>
+      {incident.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="col-span-2 md:col-span-2">

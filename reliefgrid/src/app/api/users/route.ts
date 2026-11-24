@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
@@ -33,10 +34,18 @@ export async function GET(req: Request) {
 
     if (isAdmin) {
       if (organizationId) where.organizationId = organizationId;
-    } else if (user.role === "EMERGENCY_COORDINATOR" || user.role === "RELIEF_ORGANIZATION") {
-      where.organizationId = user.organizationId;
     } else {
-      where.id = user.id;
+      const organizationScope = user.role === "EMERGENCY_COORDINATOR" || user.role === "RELIEF_ORGANIZATION"
+        ? user.organizationId ? { organizationId: user.organizationId } : undefined
+        : { id: user.id };
+      if (!role || role === "VOLUNTEER") {
+        includeDemoRecords(where, organizationScope, demoDataWhere.volunteer);
+      } else {
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : []),
+          organizationScope || { id: user.id },
+        ];
+      }
     }
 
     const [data, total] = await Promise.all([
@@ -55,7 +64,15 @@ export async function GET(req: Request) {
       prisma.user.count({ where }),
     ]);
 
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data: data.map((record) => ({
+        ...record,
+        isDemo: record.email.startsWith("rgdemo-") && record.email.endsWith("@example.invalid"),
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }

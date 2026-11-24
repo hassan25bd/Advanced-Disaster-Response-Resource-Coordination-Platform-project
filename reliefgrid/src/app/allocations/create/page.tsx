@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui";
 
-type RequestOption = { id: string; type: string; location: string; quantity: number; status: string; incident?: { title: string }; allocations: { allocatedQuantity: number; status: string }[] };
-type ResourceOption = { id: string; name: string; category: string; organizationId: string; organization?: { name: string }; availableQuantity: number; unit: string };
+type RequestOption = { id: string; isDemo?: boolean; type: string; location: string; quantity: number; status: string; incident?: { title: string }; allocations: { allocatedQuantity: number; status: string }[] };
+type ResourceOption = { id: string; isDemo?: boolean; name: string; category: string; organizationId: string; organization?: { name: string }; availableQuantity: number; unit: string };
 
 function getRemainingQuantity(request: RequestOption) {
   const allocated = request.allocations
@@ -30,9 +30,9 @@ export default function CreateAllocationPage() {
       apiFetch("/api/resources?pageSize=100"),
     ]).then(([requestResult, resourceResult]) => {
       setRequests(requestResult.data.filter((request: RequestOption) =>
-        ["VERIFIED", "ALLOCATED", "IN_TRANSIT"].includes(request.status) && getRemainingQuantity(request) > 0
+        !request.isDemo && ["VERIFIED", "ALLOCATED", "IN_TRANSIT"].includes(request.status) && getRemainingQuantity(request) > 0
       ));
-      setResources(resourceResult.data);
+      setResources(resourceResult.data.filter((resource: ResourceOption) => !resource.isDemo));
       setError("");
     }).catch((err) => setError(err instanceof Error ? err.message : "Unable to load allocation options."))
       .finally(() => setLoading(false));

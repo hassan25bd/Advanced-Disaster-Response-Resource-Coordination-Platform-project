@@ -7,7 +7,7 @@ import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
 type Allocation = {
-  id: string; allocatedQuantity: number; status: string; qrVerificationCode: string; allocatedAt: string; deliveredAt: string | null;
+  id: string; isDemo?: boolean; allocatedQuantity: number; status: string; qrVerificationCode: string; allocatedAt: string; deliveredAt: string | null;
   request: { id: string; type: string; location: string; status: string; incident?: { title: string; location: string } };
   resource: { name: string; unit: string };
   organization: { name: string };
@@ -68,12 +68,13 @@ export default function AllocationDetailsPage() {
   if (loading) return <p className="py-10 text-center">Loading allocation...</p>;
   if (!allocation) return <p role="alert" className="text-rose-700">{error || "Allocation not found."}</p>;
   const terminal = allocation.status === "DELIVERED" || allocation.status === "CANCELLED";
-  const canUpdate = role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION";
+  const canUpdate = !allocation.isDemo && (role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION");
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Allocation details</h1><p className="text-sm text-slate-500">{allocation.request.incident?.title || "Emergency request"} · {statusLabel(allocation.status)}</p></div><Button onClick={() => router.push("/allocations")}>Back to allocations</Button></div>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {allocation.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
       <Card><CardHeader><CardTitle>Distribution record</CardTitle></CardHeader><CardContent className="grid gap-3 text-sm sm:grid-cols-2">
         <p><strong>Request:</strong> {statusLabel(allocation.request.type)} — {allocation.request.location}</p>
         <p><strong>Incident:</strong> {allocation.request.incident?.title || "—"}</p>

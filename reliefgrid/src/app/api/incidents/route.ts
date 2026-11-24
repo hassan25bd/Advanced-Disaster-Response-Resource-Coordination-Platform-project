@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 import { calculateIncidentPriority, getLocationRiskScore } from "@/lib/priority";
 
 export async function GET(req: Request) {
@@ -31,12 +32,22 @@ export async function GET(req: Request) {
     }
 
     if (user.role === "RELIEF_ORGANIZATION") {
-      if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-      where.reportedBy = { organizationId: user.organizationId };
+      includeDemoRecords(
+        where,
+        user.organizationId ? { reportedBy: { organizationId: user.organizationId } } : undefined,
+        demoDataWhere.incident,
+      );
     } else if (user.role === "EMERGENCY_COORDINATOR") {
-      where.AND = [...(where.AND || []), { OR: [{ coordinatorId: user.id }, { status: "REPORTED" }] }];
+      includeDemoRecords(
+        where,
+        { OR: [{ coordinatorId: user.id }, { status: "REPORTED" }] },
+        demoDataWhere.incident,
+      );
     } else if (user.role === "VOLUNTEER") {
       where.status = { in: ["VERIFIED", "IN_PROGRESS", "RESOLVED"] };
+      includeDemoRecords(where, undefined, demoDataWhere.incident);
+    } else if (user.role === "SHELTER_MANAGER") {
+      includeDemoRecords(where, undefined, demoDataWhere.incident);
     }
 
     const candidates = await prisma.incident.findMany({
@@ -70,7 +81,7 @@ export async function GET(req: Request) {
     const dataById = new Map(pageData.map((incident) => [incident.id, incident]));
     const data = pageItems.flatMap((item) => {
       const incident = dataById.get(item.id);
-      return incident ? [{ ...incident, priorityScore: item.score, locationRiskScore: item.locationRiskScore }] : [];
+      return incident ? [{ ...incident, isDemo: incident.description.startsWith("[RGDEMO-"), priorityScore: item.score, locationRiskScore: item.locationRiskScore }] : [];
     });
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -100,6 +111,9 @@ export async function POST(req: Request) {
     }
     if (locationRiskScore !== undefined && !["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user.role)) {
       return NextResponse.json({ error: "Only coordinators and administrators can assess location risk" }, { status: 403 });
+    }
+    if (description.trim().startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
     }
 
     const incident = await prisma.$transaction(async (tx) => {

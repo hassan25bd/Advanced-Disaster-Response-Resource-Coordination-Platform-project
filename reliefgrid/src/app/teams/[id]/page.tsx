@@ -7,11 +7,11 @@ import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Select } from "@/components/ui";
 
 type Team = {
-  id: string; name: string; status: string; organizationId: string;
+  id: string; isDemo?: boolean; name: string; status: string; organizationId: string;
   organization: { name: string }; leader: { id: string; name: string } | null;
   tasks: { id: string; title: string; status: string; volunteer: { name: string } | null; incident: { title: string } | null }[];
 };
-type Volunteer = { id: string; name: string };
+type Volunteer = { id: string; name: string; isDemo?: boolean };
 
 export default function TeamDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +33,7 @@ export default function TeamDetailsPage() {
       setError("");
       if (role && role !== "VOLUNTEER") {
         const users = await apiFetch("/api/users?role=VOLUNTEER&pageSize=100");
-        setVolunteers(users.data);
+        setVolunteers(users.data.filter((person: Volunteer) => !person.isDemo));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load team.");
@@ -48,7 +48,7 @@ export default function TeamDetailsPage() {
       const users = role && role !== "VOLUNTEER"
         ? await apiFetch("/api/users?role=VOLUNTEER&pageSize=100")
         : { data: [] };
-      return { current, users };
+      return { current, users: { data: users.data.filter((person: Volunteer) => !person.isDemo) } };
     }).then(({ current, users }) => {
       if (!active) return;
       setTeam(current);
@@ -79,12 +79,13 @@ export default function TeamDetailsPage() {
 
   if (loading) return <p className="py-10 text-center">Loading team...</p>;
   if (!team) return <p role="alert" className="text-rose-700">{error || "Team not found."}</p>;
-  const canEdit = role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION";
+  const canEdit = !team.isDemo && (role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "RELIEF_ORGANIZATION");
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">{team.name}</h1><p className="text-sm text-slate-500">{team.organization.name} · Leader: {team.leader?.name || "Unassigned"}</p></div><Button onClick={() => router.push("/teams")}>Back to teams</Button></div>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {team.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
       {canEdit && <Card><CardHeader><CardTitle>Team settings</CardTitle></CardHeader><CardContent>
         <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium">Leader<Select value={form.leaderId} onChange={(event) => setForm({ ...form, leaderId: event.target.value })}><option value="">Unassigned</option>{volunteers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</Select></label>

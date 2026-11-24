@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
-
-function orgFilter(user: any) {
-  if (user.role === "SYSTEM_ADMIN") return {};
-  return { organizationId: user.organizationId };
-}
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
-    if (user.role !== "SYSTEM_ADMIN" && !user.organizationId) {
-      return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-    }
+    const user = await requireAuth();
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
@@ -20,10 +13,16 @@ export async function GET(req: Request) {
     const category = searchParams.get("category") || undefined;
 
     const where: any = {
-      ...orgFilter(user),
       ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
       ...(category ? { category } : {}),
     };
+    if (user.role !== "SYSTEM_ADMIN") {
+      includeDemoRecords(
+        where,
+        user.organizationId ? { organizationId: user.organizationId } : undefined,
+        demoDataWhere.resource,
+      );
+    }
 
     const [data, total] = await Promise.all([
       prisma.resource.findMany({
@@ -36,7 +35,15 @@ export async function GET(req: Request) {
       prisma.resource.count({ where }),
     ]);
 
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data: data.map((resource) => ({
+        ...resource,
+        isDemo: resource.storageLocation.startsWith("RGDEMO-"),
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -58,6 +65,9 @@ export async function POST(req: Request) {
     if (!orgId) return NextResponse.json({ error: "No organization associated" }, { status: 400 });
     if (user.role === "EMERGENCY_COORDINATOR" && orgId !== user.organizationId) {
       return NextResponse.json({ error: "You can only manage resources for your organization" }, { status: 403 });
+    }
+    if (typeof storageLocation === "string" && storageLocation.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
     }
     if (!["FOOD_PACKAGES", "DRINKING_WATER", "MEDICAL_SUPPLIES", "EMERGENCY_KITS", "BLANKETS", "RESCUE_EQUIPMENT", "TRANSPORTATION"].includes(category)) {
       return NextResponse.json({ error: "Invalid resource category" }, { status: 400 });

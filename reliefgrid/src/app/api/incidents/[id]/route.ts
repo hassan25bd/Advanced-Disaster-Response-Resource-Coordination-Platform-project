@@ -24,13 +24,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
-    if (user.role === "RELIEF_ORGANIZATION" &&
+    const isDemo = incident.description.startsWith("[RGDEMO-");
+    if (!isDemo && user.role === "RELIEF_ORGANIZATION" &&
         (!user.organizationId || incident.reportedBy.organizationId !== user.organizationId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const locationRiskScore = getLocationRiskScore(incident.history.filter((entry) => entry.action === "location_risk_assessed"));
     return NextResponse.json({
       ...incident,
+      isDemo,
       locationRiskScore,
       priorityScore: calculateIncidentPriority({ ...incident, locationRiskScore }),
     });
@@ -56,6 +58,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
     if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
+    if (incident.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const isCoordinator = user.role === "EMERGENCY_COORDINATOR";
@@ -69,6 +74,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = await req.json();
     const { title, description, category, location, latitude, longitude, severity, affectedPopulation, status, imageUrl, coordinatorId, locationRiskScore } = body || {};
+    if (typeof description === "string" && description.trim().startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
+    }
     if (body && Object.prototype.hasOwnProperty.call(body, "priorityScore")) {
       return NextResponse.json({ error: "Priority score is calculated by the server" }, { status: 400 });
     }
@@ -79,6 +87,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!isAdmin && !isCoordinator &&
         ["category", "severity", "affectedPopulation", "status", "coordinatorId"].some((field) => body?.[field] !== undefined)) {
       return NextResponse.json({ error: "Only coordinators and administrators can change operational incident fields" }, { status: 403 });
+    }
+    if (coordinatorId) {
+      const coordinator = await prisma.user.findFirst({
+        where: { id: coordinatorId, role: "EMERGENCY_COORDINATOR", isActive: true },
+        select: { email: true },
+      });
+      if (!coordinator) return NextResponse.json({ error: "Select an active emergency coordinator" }, { status: 400 });
+      if (coordinator.email.startsWith("rgdemo-") && coordinator.email.endsWith("@example.invalid")) {
+        return NextResponse.json({ error: "Shared demo accounts cannot be assigned to live incidents" }, { status: 409 });
+      }
     }
 
     const updates: any = {};
@@ -150,6 +168,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     await requireRole("SYSTEM_ADMIN");
+    const incident = await prisma.incident.findUnique({ where: { id }, select: { description: true } });
+    if (incident?.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records cannot be deleted" }, { status: 409 });
+    }
     await prisma.incident.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err: any) {

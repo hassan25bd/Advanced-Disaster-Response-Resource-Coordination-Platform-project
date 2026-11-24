@@ -16,6 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    const isDemo = task.title.startsWith("RGDEMO-");
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const isCoordinator = user.role === "EMERGENCY_COORDINATOR" &&
       (task.incident?.coordinatorId === user.id ||
@@ -24,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const isOrganization = user.role === "RELIEF_ORGANIZATION" &&
       !!user.organizationId && task.team?.organizationId === user.organizationId;
     const isVolunteer = user.role === "VOLUNTEER" && task.volunteerId === user.id;
-    if (!isAdmin && !isCoordinator && !isOrganization && !isVolunteer) {
+    if (!isDemo && !isAdmin && !isCoordinator && !isOrganization && !isVolunteer) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const history = await prisma.activityLog.findMany({
@@ -32,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       orderBy: { timestamp: "desc" },
       include: { user: { select: { name: true } } },
     });
-    return NextResponse.json({ ...task, history });
+    return NextResponse.json({ ...task, isDemo, history });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -47,6 +48,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       include: { incident: { include: { reportedBy: { select: { organizationId: true } } } }, team: { select: { organizationId: true } } },
     });
     if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    if (task.title.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records are read-only" }, { status: 409 });
+    }
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const isCoordinator = user.role === "EMERGENCY_COORDINATOR" &&
@@ -117,9 +121,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           id: teamId,
           ...(user.role === "EMERGENCY_COORDINATOR" && user.organizationId ? { organizationId: user.organizationId } : {}),
         },
-        select: { organizationId: true },
+        select: { organizationId: true, name: true },
       });
       if (!team) return NextResponse.json({ error: "Team not found or outside your organization" }, { status: 400 });
+      if (team.name.startsWith("RGDEMO-")) {
+        return NextResponse.json({ error: "Shared demo teams cannot be assigned to live tasks" }, { status: 409 });
+      }
       if (task.volunteerId) {
         const volunteer = await prisma.user.findFirst({
           where: { id: task.volunteerId, role: "VOLUNTEER", organizationId: team.organizationId, isActive: true },

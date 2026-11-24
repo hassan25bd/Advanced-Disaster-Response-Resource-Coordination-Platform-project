@@ -22,6 +22,15 @@ type DashboardStats = {
   categoryDist: { category: string; _count: number }[];
   requestTrends: { createdAt: string; _count: number }[];
   resourceDist: { category: string; _sum: { availableQuantity: number | null } }[];
+  demoCounts: {
+    requests: number;
+    resources: number;
+    shelters: number;
+    volunteers: number;
+    teams: number;
+    tasks: number;
+    allocations: number;
+  };
 };
 
 export default function DashboardPage() {
@@ -55,18 +64,6 @@ export default function DashboardPage() {
       window.clearInterval(timer);
     };
   }, []);
-
-  if (role === "RELIEF_ORGANIZATION" && !user?.organizationId) {
-    return (
-      <div className="max-w-2xl space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-950">
-        <h1 className="text-xl font-semibold">Organization setup required</h1>
-        <p className="text-sm">Link your account to your organization before loading organization-scoped dashboard data.</p>
-        <Link href="/organization/setup" className="inline-flex rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">
-          Set up organization
-        </Link>
-      </div>
-    );
-  }
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center">
@@ -112,6 +109,22 @@ export default function DashboardPage() {
           suffix={stats?.avgResponseTime === null ? undefined : "min"}
         />
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Shared sample dataset</h2>
+          <p className="text-sm text-slate-500">Read-only sample records are available to every signed-in role.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+          <DemoCountCard title="Requests" count={stats?.demoCounts.requests ?? 0} href="/requests" />
+          <DemoCountCard title="Resources" count={stats?.demoCounts.resources ?? 0} href="/resources" />
+          <DemoCountCard title="Shelters" count={stats?.demoCounts.shelters ?? 0} href="/shelters" />
+          <DemoCountCard title="Volunteers" count={stats?.demoCounts.volunteers ?? 0} href="/volunteers" />
+          <DemoCountCard title="Teams" count={stats?.demoCounts.teams ?? 0} href="/teams" />
+          <DemoCountCard title="Tasks" count={stats?.demoCounts.tasks ?? 0} href="/tasks" />
+          <DemoCountCard title="Allocations" count={stats?.demoCounts.allocations ?? 0} href="/allocations" />
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="lg:col-span-1">
@@ -159,6 +172,15 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function DemoCountCard({ title, count, href }: { title: string; count: number; href: string }) {
+  return (
+    <Link href={href} className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-900">{count.toLocaleString()}</p>
+    </Link>
   );
 }
 

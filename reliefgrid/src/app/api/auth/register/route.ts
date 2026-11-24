@@ -26,6 +26,9 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
+    if (normalizedEmail.startsWith("rgdemo-") && normalizedEmail.endsWith("@example.invalid")) {
+      return NextResponse.json({ error: "This email prefix is reserved for shared demo records" }, { status: 400 });
+    }
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });

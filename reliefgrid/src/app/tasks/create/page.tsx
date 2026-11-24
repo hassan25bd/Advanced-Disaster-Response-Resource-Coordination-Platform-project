@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui";
 
-type Option = { id: string; title?: string; name?: string; location?: string };
+type Option = { id: string; isDemo?: boolean; title?: string; name?: string; location?: string };
 
 export default function CreateTaskPage() {
   const router = useRouter();
@@ -23,9 +23,9 @@ export default function CreateTaskPage() {
       apiFetch("/api/teams?pageSize=100"),
       apiFetch("/api/users?role=VOLUNTEER&pageSize=100"),
     ]).then(([incidentResult, teamResult, volunteerResult]) => {
-      setIncidents(incidentResult.data);
-      setTeams(teamResult.data);
-      setVolunteers(volunteerResult.data);
+      setIncidents(incidentResult.data.filter((incident: Option) => !incident.isDemo));
+      setTeams(teamResult.data.filter((team: Option) => !team.isDemo));
+      setVolunteers(volunteerResult.data.filter((volunteer: Option) => !volunteer.isDemo));
       setError("");
     }).catch((err) => setError(err instanceof Error ? err.message : "Unable to load task options."))
       .finally(() => setLoading(false));

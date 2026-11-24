@@ -93,6 +93,7 @@ npx --yes tsx prisma/seed-organization-demo.mts <organization-id> --dry-run
 npx --yes tsx prisma/seed-organization-demo.mts <organization-id> --apply
 ```
 The operation is additive and idempotency-guarded; generated volunteer and shelter-manager accounts use random undisclosed passwords and are sample profiles rather than demo login credentials.
+The generated shared sample records (including 12 teams, 60 tasks, and 40 allocations) are visible in read-only views to every authenticated role, so they remain available when users sign in with different accounts. Live organization records stay scoped to their organization, and shared sample records cannot be edited or deleted through the application.
 
 ### Run
 ```bash

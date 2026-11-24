@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION");
+    const user = await requireAuth();
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
@@ -16,14 +17,19 @@ export async function GET(req: Request) {
     const where: any = {};
     if (status) where.status = status;
     if (user.role === "RELIEF_ORGANIZATION" || user.role === "EMERGENCY_COORDINATOR") {
-      if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-      where.organizationId = user.organizationId;
+      includeDemoRecords(
+        where,
+        user.organizationId ? { organizationId: user.organizationId } : undefined,
+        demoDataWhere.allocation,
+      );
+    } else if (user.role !== "SYSTEM_ADMIN") {
+      includeDemoRecords(where, undefined, demoDataWhere.allocation);
     } else if (organizationId) {
       where.organizationId = organizationId;
     }
 
     if (search) {
-      where.AND = [{ OR: [
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { OR: [
         { request: { location: { contains: search, mode: "insensitive" } } },
         { request: { incident: { title: { contains: search, mode: "insensitive" } } } },
         { resource: { name: { contains: search, mode: "insensitive" } } },
@@ -47,7 +53,16 @@ export async function GET(req: Request) {
       prisma.resourceAllocation.count({ where }),
     ]);
 
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data: data.map((allocation) => ({
+        ...allocation,
+        isDemo: allocation.resource.storageLocation.startsWith("RGDEMO-") ||
+          allocation.request.incident.description.startsWith("[RGDEMO-"),
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -64,12 +79,18 @@ export async function POST(req: Request) {
     }
 
     const [request, resource] = await Promise.all([
-      prisma.emergencyRequest.findUnique({ where: { id: requestId } }),
+      prisma.emergencyRequest.findUnique({
+        where: { id: requestId },
+        include: { incident: { select: { description: true } } },
+      }),
       prisma.resource.findUnique({ where: { id: resourceId } }),
     ]);
 
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
     if (!resource) return NextResponse.json({ error: "Resource not found" }, { status: 404 });
+    if (request.incident.description.startsWith("[RGDEMO-") || resource.storageLocation.startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records cannot be changed" }, { status: 409 });
+    }
 
     if (resource.organizationId !== organizationId) {
       return NextResponse.json({ error: "Resource does not belong to the assigned organization" }, { status: 400 });

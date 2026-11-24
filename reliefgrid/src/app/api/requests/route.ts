@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 import { calculateRequestPriority, getLocationRiskScore } from "@/lib/priority";
 
 export async function GET(req: Request) {
@@ -23,11 +24,16 @@ export async function GET(req: Request) {
     };
 
     if (user.role === "RELIEF_ORGANIZATION") {
-      if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-      where.AND = [...(where.AND || []), { OR: [
-        { incident: { reportedBy: { organizationId: user.organizationId } } },
-        { allocations: { some: { organizationId: user.organizationId } } },
-      ] }];
+      includeDemoRecords(
+        where,
+        user.organizationId ? { OR: [
+          { incident: { reportedBy: { organizationId: user.organizationId } } },
+          { allocations: { some: { organizationId: user.organizationId } } },
+        ] } : undefined,
+        demoDataWhere.request,
+      );
+    } else if (user.role === "VOLUNTEER" || user.role === "SHELTER_MANAGER") {
+      includeDemoRecords(where, undefined, demoDataWhere.request);
     }
 
     if (search) {
@@ -70,7 +76,7 @@ export async function GET(req: Request) {
     const pageData = pageItems.length ? await prisma.emergencyRequest.findMany({
       where: { id: { in: pageItems.map((item) => item.id) } },
       include: {
-        incident: { select: { id: true, title: true, category: true, severity: true, location: true } },
+        incident: { select: { id: true, title: true, category: true, severity: true, location: true, description: true } },
         allocations: {
           where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
           include: { resource: true, organization: true },
@@ -80,7 +86,7 @@ export async function GET(req: Request) {
     const dataById = new Map(pageData.map((request) => [request.id, request]));
     const data = pageItems.flatMap((item) => {
       const request = dataById.get(item.id);
-      return request ? [{ ...request, priorityScore: item.score }] : [];
+      return request ? [{ ...request, isDemo: request.incident.description.startsWith("[RGDEMO-"), priorityScore: item.score }] : [];
     });
 
     return NextResponse.json({ data, total, page, pageSize });
@@ -121,6 +127,9 @@ export async function POST(req: Request) {
       },
     });
     if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
+    if (incident.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records cannot be changed" }, { status: 409 });
+    }
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const isCoordinator = user.role === "EMERGENCY_COORDINATOR";

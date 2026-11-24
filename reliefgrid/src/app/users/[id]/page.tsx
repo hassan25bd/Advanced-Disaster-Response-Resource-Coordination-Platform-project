@@ -7,7 +7,7 @@ import { apiFetch, statusLabel } from "@/lib/api";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui";
 
 type UserRecord = {
-  id: string; name: string; email: string; role: string; organizationId: string | null;
+  id: string; isDemo?: boolean; name: string; email: string; role: string; organizationId: string | null;
   phone: string | null; availabilityStatus: string; isActive: boolean; createdAt: string;
   organization: { id: string; name: string } | null;
   _count: { incidents: number; allocations: number; teamsLed: number; tasks: number };
@@ -96,8 +96,9 @@ export default function UserDetailsPage() {
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">{target.name}</h1><p className="text-sm text-slate-500">{statusLabel(target.role)} · {target.organization?.name || "No organization"}</p></div><Button onClick={() => router.push(currentUser?.role === "SYSTEM_ADMIN" ? "/users" : "/volunteers")}>Back</Button></div>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
+      {target.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample profile · read-only</p>}
       <Card><CardHeader><CardTitle>Profile and permissions</CardTitle></CardHeader><CardContent>
-        {isAdmin ? <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+        {isAdmin && !target.isDemo ? <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium">Name<Input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
           <label className="text-sm font-medium">Email<Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
           <label className="text-sm font-medium">Phone<Input type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>

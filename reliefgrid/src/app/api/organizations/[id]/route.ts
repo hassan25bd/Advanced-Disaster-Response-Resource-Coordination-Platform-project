@@ -40,6 +40,16 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     await requireRole("SYSTEM_ADMIN");
+    const demoProfile = await prisma.user.findFirst({
+      where: {
+        organizationId: id,
+        email: { startsWith: "rgdemo-", endsWith: "@example.invalid" },
+      },
+      select: { id: true },
+    });
+    if (demoProfile) {
+      return NextResponse.json({ error: "Organizations with shared demo records cannot be deleted" }, { status: 409 });
+    }
     await prisma.organization.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err: any) {

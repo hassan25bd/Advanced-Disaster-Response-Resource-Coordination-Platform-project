@@ -8,7 +8,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from 
 
 type OccupancyEntry = { id: string; previousOccupancy: number; newOccupancy: number; notes: string | null; timestamp: string };
 type Shelter = {
-  id: string; name: string; location: string; latitude: number; longitude: number;
+  id: string; isDemo?: boolean; name: string; location: string; latitude: number; longitude: number;
   totalCapacity: number; currentOccupancy: number; status: string; facilities: string[];
   manager?: { name: string } | null; occupancyLogs: OccupancyEntry[];
 };
@@ -90,7 +90,7 @@ export default function ShelterDetailsPage() {
 
   if (loading) return <p className="py-10 text-center">Loading shelter...</p>;
   if (!shelter) return <p role="alert" className="text-rose-700">{error || "Shelter not found."}</p>;
-  const canEdit = role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "SHELTER_MANAGER";
+  const canEdit = !shelter.isDemo && (role === "SYSTEM_ADMIN" || role === "EMERGENCY_COORDINATOR" || role === "SHELTER_MANAGER");
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -98,6 +98,7 @@ export default function ShelterDetailsPage() {
         <div><h1 className="text-2xl font-bold">{shelter.name}</h1><p className="text-sm text-slate-500">{shelter.location} · Manager: {shelter.manager?.name || "Unassigned"}</p></div>
         <Button onClick={() => router.push("/shelters")}>Back to shelters</Button>
       </div>
+      {shelter.isDemo && <p role="status" className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Shared sample record · read-only</p>}
       {error && <p role="alert" className="text-rose-700">{error}</p>}
       <Card><CardHeader><CardTitle>Capacity and facilities</CardTitle></CardHeader><CardContent>
         {canEdit ? <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">

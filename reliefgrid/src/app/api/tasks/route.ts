@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { demoDataWhere, includeDemoRecords } from "@/lib/demo-data";
 
 export async function GET(req: Request) {
   try {
-    const user = await requireRole("SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "VOLUNTEER");
+    const user = await requireAuth();
     const { searchParams } = new URL(req.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
@@ -18,11 +19,11 @@ export async function GET(req: Request) {
     ] }] } : {};
     if (status) where.status = status;
 
+    let organizationScope: Record<string, unknown> | undefined;
     if (user.role === "VOLUNTEER") {
-      where.volunteerId = user.id;
+      organizationScope = { volunteerId: user.id };
     } else if (user.role === "RELIEF_ORGANIZATION") {
-      if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-      where.team = { organizationId: user.organizationId };
+      if (user.organizationId) organizationScope = { team: { organizationId: user.organizationId } };
     } else if (user.role === "EMERGENCY_COORDINATOR") {
       const coordinatorScope: Record<string, unknown>[] = [{ incident: { coordinatorId: user.id } }];
       if (user.organizationId) {
@@ -31,10 +32,10 @@ export async function GET(req: Request) {
           { team: { organizationId: user.organizationId } },
         );
       }
-      where.AND = [
-        ...(where.AND || []),
-        { OR: coordinatorScope },
-      ];
+      organizationScope = { OR: coordinatorScope };
+    }
+    if (user.role !== "SYSTEM_ADMIN") {
+      includeDemoRecords(where, organizationScope, demoDataWhere.task);
     }
 
     const [data, total] = await Promise.all([
@@ -48,7 +49,15 @@ export async function GET(req: Request) {
       prisma.volunteerTask.count({ where }),
     ]);
 
-    return NextResponse.json({ data, total, page, pageSize });
+    return NextResponse.json({
+      data: data.map((task) => ({
+        ...task,
+        isDemo: task.title.startsWith("RGDEMO-"),
+      })),
+      total,
+      page,
+      pageSize,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -63,15 +72,21 @@ export async function POST(req: Request) {
     if (typeof title !== "string" || !title.trim() || typeof incidentId !== "string" || !incidentId) {
       return NextResponse.json({ error: "Title and incident are required" }, { status: 400 });
     }
+    if (title.trim().startsWith("RGDEMO-")) {
+      return NextResponse.json({ error: "This prefix is reserved for shared demo records" }, { status: 400 });
+    }
     if ((latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
         (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
       return NextResponse.json({ error: "Invalid task coordinates" }, { status: 400 });
     }
     const incident = await prisma.incident.findUnique({
       where: { id: incidentId },
-      select: { id: true, coordinatorId: true, reportedBy: { select: { organizationId: true } } },
+      select: { id: true, coordinatorId: true, description: true, reportedBy: { select: { organizationId: true } } },
     });
     if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
+    if (incident.description.startsWith("[RGDEMO-")) {
+      return NextResponse.json({ error: "Shared demo records cannot be changed" }, { status: 409 });
+    }
     if (user.role === "EMERGENCY_COORDINATOR" &&
         incident.coordinatorId !== user.id &&
         (!user.organizationId || incident.reportedBy.organizationId !== user.organizationId)) {
@@ -79,9 +94,12 @@ export async function POST(req: Request) {
     }
     let teamOrgId: string | null = null;
     if (teamId) {
-      const team = await prisma.team.findUnique({ where: { id: teamId }, select: { organizationId: true } });
+      const team = await prisma.team.findUnique({ where: { id: teamId }, select: { organizationId: true, name: true } });
       if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
       teamOrgId = team.organizationId;
+      if (team.name.startsWith("RGDEMO-")) {
+        return NextResponse.json({ error: "Shared demo records cannot be changed" }, { status: 409 });
+      }
       if (user.role === "EMERGENCY_COORDINATOR" && user.organizationId && teamOrgId !== user.organizationId) {
         return NextResponse.json({ error: "You cannot assign a team outside your organization" }, { status: 403 });
       }
@@ -96,9 +114,12 @@ export async function POST(req: Request) {
             ? { organizationId: teamOrgId || user.organizationId }
             : {}),
         },
-        select: { id: true },
+        select: { id: true, email: true },
       });
       if (!volunteer) return NextResponse.json({ error: "Volunteer must be active and belong to the assigned team organization" }, { status: 400 });
+      if (volunteer.email.startsWith("rgdemo-") && volunteer.email.endsWith("@example.invalid")) {
+        return NextResponse.json({ error: "Shared demo volunteers cannot be assigned to live tasks" }, { status: 409 });
+      }
     }
 
     const task = await prisma.$transaction(async (tx) => {
