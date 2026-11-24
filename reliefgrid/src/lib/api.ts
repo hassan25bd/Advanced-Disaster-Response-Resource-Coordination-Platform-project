@@ -6,7 +6,16 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `API error ${res.status}`);
+    let message = `API error ${res.status}`;
+    if (text) {
+      try {
+        const body = JSON.parse(text);
+        message = typeof body.error === "string" ? body.error : text;
+      } catch {
+        message = text;
+      }
+    }
+    throw new Error(message);
   }
   return res.json();
 }

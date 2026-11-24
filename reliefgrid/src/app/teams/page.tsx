@@ -13,6 +13,7 @@ export default function TeamsPage() {
   const { data: session } = useSession();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "" });
   const user = (session?.user as any) || {};
 
@@ -24,12 +25,24 @@ export default function TeamsPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
-    const d = await apiFetch(`/api/teams?${params}`);
-    setData(d.data);
-    setLoading(false);
+    try {
+      const d = await apiFetch(`/api/teams?${params}`);
+      setData(d.data);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load teams.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (loading) return <div className="py-10 text-center">Loading teams...</div>;
+  if (error) return (
+    <div role="alert" className="space-y-3 text-rose-700">
+      <p>Unable to load teams: {error}</p>
+      <Button onClick={() => void load()}>Retry</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-5">

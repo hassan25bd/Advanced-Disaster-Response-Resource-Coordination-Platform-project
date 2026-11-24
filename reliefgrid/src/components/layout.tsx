@@ -88,16 +88,27 @@ export function Sidebar() {
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { data: session } = useSession();
   if (pathname === "/login" || pathname === "/register") {
     return <main className="min-h-screen bg-slate-50">{children}</main>;
   }
+  const user = session?.user as { role?: string; organizationId?: string | null } | undefined;
+  const needsOrganizationSetup = user?.role === "RELIEF_ORGANIZATION" && !user.organizationId;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
       <Navbar />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
+          {needsOrganizationSetup && pathname !== "/organization/setup" && (
+            <div role="status" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <span>Complete your organization profile to access organization-scoped records.</span>
+              <Link href="/organization/setup" className="font-semibold underline">Set up organization</Link>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

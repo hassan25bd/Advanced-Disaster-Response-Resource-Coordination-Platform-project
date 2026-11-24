@@ -14,12 +14,16 @@ export default withAuth({
 
       if (pathname.startsWith("/api")) return true;
 
+      if (pathname === "/organization/setup") {
+        return (token as any).role === "RELIEF_ORGANIZATION";
+      }
+
       if (pathname.startsWith("/admin") || pathname.startsWith("/users")) {
         return (token as any).role === "SYSTEM_ADMIN";
       }
 
       if (pathname.startsWith("/coordinator") || pathname === "/allocations") {
-        return ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes((token as any).role);
+        return ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION"].includes((token as any).role);
       }
 
       if (pathname.startsWith("/organization") || pathname.startsWith("/resources")) {

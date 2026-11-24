@@ -38,6 +38,7 @@ The rules below are the intended behavior. Some remain incomplete; see Implement
 ### Organization Security
 1. Organization-facing incident, request, resource, and analytics queries are filtered by the authenticated organization where applicable; incident detail access is checked server-side.
 2. System Admins see all organizations.
+3. Relief Organization accounts must be linked to an organization. Registration creates the organization and account in one transaction; previously unlinked accounts must complete authenticated organization setup before organization-scoped analytics and records are available.
 3. Emergency Coordinators manage authorized emergency operations.
 
 ### Data Integrity

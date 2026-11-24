@@ -6,7 +6,7 @@ Auth: NextAuth.js JWT session cookie (`next-auth.session-token`). All `/api/*` r
 ## Authentication
 
 - `POST /api/auth/login` — NextAuth credentials sign-in (handled by NextAuth handler at `/api/auth/[...nextauth]`)
-- `POST /api/auth/register` — register a new user (VOLUNTEER or RELIEF_ORGANIZATION)
+- `POST /api/auth/register` — register a VOLUNTEER or RELIEF_ORGANIZATION; organization registration requires `organizationName` and `registrationNo` and creates the linked organization atomically
 - `GET /api/me` — current authenticated user
 - `POST /api/auth/signout` — sign out
 
@@ -21,6 +21,7 @@ Responses are shaped `{ data, total, page, pageSize }`.
 ### Organizations
 - `GET /api/organizations` — list (System Admin sees all; others see own)
 - `POST /api/organizations` — create (System Admin)
+- `POST /api/organizations/onboard` — create and link an organization for an authenticated RELIEF_ORGANIZATION account that has no organization yet
 - `GET /api/organizations/[id]` — get (System Admin)
 - `PUT /api/organizations/[id]` — update (System Admin)
 - `DELETE /api/organizations/[id]` — delete (System Admin)

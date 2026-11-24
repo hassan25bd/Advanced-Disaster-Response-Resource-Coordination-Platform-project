@@ -76,6 +76,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/reliefgrid?schema=pu
 AUTH_SECRET="change-in-production-min-32-chars"
 NEXTAUTH_URL="http://localhost:3000"
 ```
+For production, configure both variables in the hosting provider. Use a strong random `AUTH_SECRET` and set `NEXTAUTH_URL` to the canonical deployed URL; changing the secret signs out existing sessions.
 
 ### Database
 ```bash

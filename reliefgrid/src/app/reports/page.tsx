@@ -12,12 +12,22 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    apiFetch("/api/analytics").then(setStats).catch(() => setMessage("Unable to load analytics.")).finally(() => setLoading(false));
+    apiFetch("/api/analytics")
+      .then(setStats)
+      .catch((err) => setError(err instanceof Error ? err.message : "Unable to load analytics."))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="py-10 text-center">Loading reports...</div>;
+  if (error) return (
+    <div role="alert" className="space-y-3 text-rose-700">
+      <p>Unable to load analytics: {error}</p>
+      <Button onClick={() => window.location.reload()}>Retry</Button>
+    </div>
+  );
 
   async function exportCsv(kind: "incidents" | "requests") {
     setExporting(true);

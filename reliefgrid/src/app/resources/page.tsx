@@ -14,6 +14,7 @@ export default function ResourcesPage() {
   const { data: session } = useSession();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "", category: "" });
   const user = (session?.user as any) || {};
 
@@ -26,14 +27,26 @@ export default function ResourcesPage() {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
     if (filters.category) params.set("category", filters.category);
-    const d = await apiFetch(`/api/resources?${params}`);
-    setData(d.data);
-    setLoading(false);
+    try {
+      const d = await apiFetch(`/api/resources?${params}`);
+      setData(d.data);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load resources.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const categories = ["FOOD_PACKAGES", "DRINKING_WATER", "MEDICAL_SUPPLIES", "EMERGENCY_KITS", "BLANKETS", "RESCUE_EQUIPMENT", "TRANSPORTATION"];
 
   if (loading) return <div className="py-10 text-center">Loading resources...</div>;
+  if (error) return (
+    <div role="alert" className="space-y-3 text-rose-700">
+      <p>Unable to load resources: {error}</p>
+      <Button onClick={() => void load()}>Retry</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-5">

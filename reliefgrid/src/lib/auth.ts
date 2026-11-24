@@ -33,13 +33,25 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         const u = user as any;
         token.id = u.id;
         token.role = u.role;
         token.organizationId = u.organizationId;
         token.organization = u.organization;
+      }
+      if (trigger === "update" && typeof token.id === "string") {
+        const account = await prisma.user.findUnique({
+          where: { id: token.id },
+          include: { organization: true },
+        });
+        if (account) {
+          token.organizationId = account.organizationId;
+          token.organization = account.organization
+            ? { id: account.organization.id, name: account.organization.name }
+            : null;
+        }
       }
       return token;
     },

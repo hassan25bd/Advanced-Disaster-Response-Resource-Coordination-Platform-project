@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { apiFetch, statusLabel } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
+import Link from "next/link";
 import {
   BarChart, Bar, PieChart, Pie, LineChart, Line, ResponsiveContainer, Cell,
 } from "recharts";
@@ -28,7 +29,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const role = (session?.user as { role?: string } | undefined)?.role;
+  const user = session?.user as { role?: string; organizationId?: string | null } | undefined;
+  const role = user?.role;
 
   useEffect(() => {
     let active = true;
@@ -53,6 +55,18 @@ export default function DashboardPage() {
       window.clearInterval(timer);
     };
   }, []);
+
+  if (role === "RELIEF_ORGANIZATION" && !user?.organizationId) {
+    return (
+      <div className="max-w-2xl space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-950">
+        <h1 className="text-xl font-semibold">Organization setup required</h1>
+        <p className="text-sm">Link your account to your organization before loading organization-scoped dashboard data.</p>
+        <Link href="/organization/setup" className="inline-flex rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">
+          Set up organization
+        </Link>
+      </div>
+    );
+  }
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center">

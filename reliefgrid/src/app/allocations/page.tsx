@@ -13,6 +13,7 @@ export default function AllocationsPage() {
   const { data: session } = useSession();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filters, setFilters] = useState({ search: "", status: "" });
   const user = (session?.user as any) || {};
 
@@ -25,14 +26,26 @@ export default function AllocationsPage() {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
     if (filters.status) params.set("status", filters.status);
-    const d = await apiFetch(`/api/allocations?${params}`);
-    setData(d.data);
-    setLoading(false);
+    try {
+      const d = await apiFetch(`/api/allocations?${params}`);
+      setData(d.data);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load allocations.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const statuses = ["ASSIGNED", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
 
   if (loading) return <div className="py-10 text-center">Loading allocations...</div>;
+  if (error) return (
+    <div role="alert" className="space-y-3 text-rose-700">
+      <p>Unable to load allocations: {error}</p>
+      <Button onClick={() => void load()}>Retry</Button>
+    </div>
+  );
 
   return (
     <div className="space-y-5">

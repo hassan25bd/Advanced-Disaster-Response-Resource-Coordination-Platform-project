@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "VOLUNTEER" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "VOLUNTEER",
+    organizationName: "",
+    registrationNo: "",
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -86,6 +93,28 @@ export default function RegisterPage() {
               <option value="RELIEF_ORGANIZATION">Relief Organization</option>
             </select>
           </div>
+          {form.role === "RELIEF_ORGANIZATION" && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Organization Name</label>
+                <input
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none"
+                  value={form.organizationName}
+                  onChange={(e) => setForm({ ...form, organizationName: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Organization Registration Number</label>
+                <input
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none"
+                  value={form.registrationNo}
+                  onChange={(e) => setForm({ ...form, registrationNo: e.target.value })}
+                  required
+                />
+              </div>
+            </>
+          )}
           <button
             disabled={loading}
             className="w-full px-4 py-2.5 bg-rose-600 text-white font-semibold rounded-md hover:bg-rose-700 disabled:opacity-60 transition-colors"
