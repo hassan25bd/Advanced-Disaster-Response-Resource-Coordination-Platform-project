@@ -17,6 +17,7 @@ type DashboardStats = {
   availableResources: number;
   activeShelters: number;
   volunteerAvailability: number;
+  avgResponseTime: number | null;
   categoryDist: { category: string; _count: number }[];
   requestTrends: { createdAt: string; _count: number }[];
   resourceDist: { category: string; _sum: { availableQuantity: number | null } }[];
@@ -30,22 +31,44 @@ export default function DashboardPage() {
   const role = (session?.user as { role?: string } | undefined)?.role;
 
   useEffect(() => {
-    apiFetch("/api/analytics")
-      .then(setStats)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+    let active = true;
+    async function load(showLoading: boolean) {
+      if (showLoading && active) setLoading(true);
+      try {
+        const result = await apiFetch("/api/analytics");
+        if (active) {
+          setStats(result);
+          setError(false);
+        }
+      } catch {
+        if (active) setError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    load(true);
+    const timer = window.setInterval(() => load(false), 15000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center">
-      <div className="flex flex-col items-center gap-2 animate-spin">
-        <div className="w-8 h-8 border-4 border-rose-600 border-t-transparent rounded-full" />
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-8 h-8 border-4 border-rose-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-slate-500 text-sm">Loading dashboard...</p>
       </div>
     </div>
   );
 
-  if (error) return <p role="alert" className="text-rose-700">Unable to load dashboard data. Please try again.</p>;
+  if (error && !stats) return (
+    <div role="alert" className="space-y-3 text-rose-700">
+      <p>Unable to load dashboard data. Please try again.</p>
+      <button className="rounded border border-rose-300 px-3 py-2 text-sm" onClick={() => window.location.reload()}>Retry</button>
+    </div>
+  );
 
   const cats = stats?.categoryDist || [];
   const trends = stats?.requestTrends || [];
@@ -67,6 +90,13 @@ export default function DashboardPage() {
         <StatCard title="Available Resources" value={stats?.availableResources ?? 0} color="bg-emerald-500" icon="📦" />
         <StatCard title="Active Shelters" value={stats?.activeShelters ?? 0} color="bg-blue-500" icon="🏠" />
         <StatCard title="Available Volunteers" value={stats?.volunteerAvailability ?? 0} color="bg-indigo-500" icon="👷" />
+        <StatCard
+          title="Average Response Time"
+          value={stats?.avgResponseTime === null ? "No data" : stats?.avgResponseTime ?? 0}
+          color="bg-cyan-600"
+          icon="⏱"
+          suffix={stats?.avgResponseTime === null ? undefined : "min"}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -108,7 +138,7 @@ export default function DashboardPage() {
         <CardHeader><CardTitle>Emergency Request Trends</CardTitle></CardHeader>
         <CardContent className="h-64">
           {trends.length === 0 ? <p className="text-sm text-slate-500">No emergency requests to display yet.</p> : <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trends.map((t, i) => ({ name: `Day ${i}`, value: t._count }))}>
+            <LineChart data={trends.map((t) => ({ name: t.createdAt.slice(5), value: t._count }))}>
               <Line type="monotone" dataKey="value" stroke="#ec4899" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>}
@@ -118,13 +148,13 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, color, icon }: { title: string; value: number; color: string; icon: string }) {
+function StatCard({ title, value, color, icon, suffix }: { title: string; value: number | string; color: string; icon: string; suffix?: string }) {
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</p>
-          <p className="text-3xl font-bold text-slate-900">{value}</p>
+          <p className="text-3xl font-bold text-slate-900">{typeof value === "number" ? value.toLocaleString() : value} {suffix && <span className="text-sm font-medium">{suffix}</span>}</p>
         </div>
         <div className={`w-10 h-10 rounded-full ${color} flex items-center justify-center text-white text-lg`}>{icon}</div>
       </div>

@@ -3,6 +3,7 @@
 ReliefGrid is a full-stack emergency management platform built with Next.js (App Router), TypeScript, Tailwind CSS, PostgreSQL (Prisma), NextAuth.js, Recharts, and Leaflet. It enables emergency response organizations, relief teams, volunteers, and shelter managers to coordinate disaster response through a centralized system.
 
 **Live website:** https://reliefgrid-indol.vercel.app
+**Source repository:** https://github.com/hassan25bd/Advanced-Disaster-Response-Resource-Coordination-Platform-project
 
 ## Development Demo Credentials
 
@@ -59,7 +60,7 @@ prisma/
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20.9+
 - PostgreSQL (running locally)
 
 ### Install
@@ -92,17 +93,18 @@ npm run lint                # eslint
 
 ## Core Features
 
-- **Incident Management:** report, categorize (Flood, Cyclone, Earthquake, Fire, Landslide, Infrastructure Failure), severity, priority scoring, GPS, image, history.
-- **Emergency Requests:** Food, Water, Medical, Shelter, Rescue, Transportation; verification, prioritization, duplicate detection.
+- **Incident Management:** report, categorize (Flood, Cyclone, Earthquake, Fire, Landslide, Infrastructure Failure), severity, coordinator-assessed location risk, GPS, image, history, searchable priority-ranked pagination.
+- **Emergency Requests:** Food, Water, Medical, Shelter, Rescue, Transportation; verification, location-risk and age-aware prioritization, duplicate detection, searchable pagination.
 - **Resource Management:** register resources, stock tracking, availability, movement history.
 - **Resource Allocation:** server-side validation (cannot exceed available quantity), automatic stock decrement, allocation history, QR verification codes.
 - **Shelter Management:** capacity, occupancy, available capacity validation, occupancy logs.
 - **Volunteer & Team Management:** registration, teams, task assignment, field reports/photos, completion tracking.
-- **Priority Management:** severity × affected people × urgency scoring; priority-sorted lists.
-- **Analytics Dashboard:** Recharts charts, key metrics, trends.
+- **Priority Management:** server-calculated scores account for severity/urgency, affected population, location risk, and elapsed time; priority changes are audited.
+- **Analytics Dashboard:** Recharts charts, daily request trends, organization-scoped metrics, and average time to first incident verification/response.
 - **Map View:** Leaflet map with incident & shelter markers.
 - **RBAC:** 5 roles, route & API-level authorization.
 - **Notifications & Activity Logs:** per-user notifications, system activity audit trail.
+- **Operational freshness:** dashboard, incident, and request views refresh automatically every 15 seconds while open; responsive layouts include loading, error, and empty states.
 
 ## API Documentation
 

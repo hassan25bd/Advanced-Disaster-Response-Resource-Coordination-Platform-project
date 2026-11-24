@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { calculateRequestPriority, getLocationRiskScore } from "@/lib/priority";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,7 +13,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const request = await prisma.emergencyRequest.findUnique({
       where: { id },
       include: {
-        incident: { include: { reportedBy: { select: { organizationId: true } } } },
+        incident: {
+          include: {
+            reportedBy: { select: { organizationId: true } },
+            history: {
+              where: { action: "location_risk_assessed" },
+              orderBy: { timestamp: "desc" },
+              take: 1,
+              select: { newValue: true },
+            },
+          },
+        },
         allocations: {
           where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
           include: { resource: true, organization: true, coordinator: { select: { id: true, name: true } } },
@@ -25,7 +36,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         !request.allocations.some((allocation) => allocation.organizationId === user.organizationId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    return NextResponse.json(request);
+    return NextResponse.json({
+      ...request,
+      priorityScore: calculateRequestPriority({
+        priority: request.priority,
+        affectedPeople: request.affectedPeople,
+        locationRiskScore: getLocationRiskScore(request.incident.history),
+        createdAt: request.createdAt,
+      }),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Unauthorized" }, { status: err.status || 401 });
   }
@@ -35,7 +54,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const user = await requireAuth();
-    const request = await prisma.emergencyRequest.findUnique({ where: { id } });
+    const request = await prisma.emergencyRequest.findUnique({
+      where: { id },
+      include: {
+        incident: {
+          select: {
+            history: {
+              where: { action: "location_risk_assessed" },
+              orderBy: { timestamp: "desc" },
+              take: 1,
+              select: { newValue: true },
+            },
+          },
+        },
+      },
+    });
     if (!request) return NextResponse.json({ error: "Request not found" }, { status: 404 });
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
@@ -53,13 +86,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const body = await req.json();
-    const { priority, priorityScore, status, description } = body || {};
-    if (isOrg && (priority !== undefined || priorityScore !== undefined || status !== undefined)) {
+    const { priority, status, description } = body || {};
+    if (body && Object.prototype.hasOwnProperty.call(body, "priorityScore")) {
+      return NextResponse.json({ error: "Priority score is calculated by the server" }, { status: 400 });
+    }
+    if (isOrg && (priority !== undefined || status !== undefined)) {
       return NextResponse.json({ error: "Only administrators and coordinators can change request priority or status" }, { status: 403 });
     }
     if ((priority !== undefined && !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(priority)) ||
         (status !== undefined && !["PENDING", "VERIFIED", "ALLOCATED", "IN_TRANSIT", "COMPLETED", "REJECTED"].includes(status)) ||
-        (priorityScore !== undefined && (!Number.isInteger(priorityScore) || priorityScore < 0 || priorityScore > 2147483647)) ||
         (description !== undefined && (typeof description !== "string" || !description.trim()))) {
       return NextResponse.json({ error: "Invalid request update" }, { status: 400 });
     }
@@ -74,7 +109,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     };
 
     track("priority", request.priority, priority, "priority_changed");
-    track("priorityScore", request.priorityScore, priorityScore, "priority_changed");
+    if (priority !== undefined && priority !== request.priority) {
+      const score = calculateRequestPriority({
+        priority,
+        affectedPeople: request.affectedPeople,
+        locationRiskScore: getLocationRiskScore(request.incident.history),
+        createdAt: request.createdAt,
+      });
+      track("priorityScore", request.priorityScore, score, "priority_recalculated");
+    }
     track("status", request.status, status, "status_changed");
     if (description !== undefined) updates.description = description;
 

@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import prisma from "@/lib/prisma";
+import { calculateRequestPriority, getLocationRiskScore } from "@/lib/priority";
 
 export async function GET(req: Request) {
   try {
     const user = await requireAuth();
     const { searchParams } = new URL(req.url);
-    const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
-    const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "10", 10), 1), 100);
-    const search = searchParams.get("search") || "";
+    const requestedPage = Number(searchParams.get("page") || 1);
+    const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const requestedPageSize = Number(searchParams.get("pageSize") || 10);
+    const pageSize = Number.isInteger(requestedPageSize) ? Math.min(Math.max(requestedPageSize, 1), 100) : 10;
+    const search = searchParams.get("search")?.trim() || "";
     const type = searchParams.get("type") || undefined;
     const priority = searchParams.get("priority") || undefined;
     const status = searchParams.get("status") || undefined;
 
     const where: any = {
-      ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
       ...(type ? { type } : {}),
       ...(priority ? { priority } : {}),
       ...(status ? { status } : {}),
@@ -22,28 +24,64 @@ export async function GET(req: Request) {
 
     if (user.role === "RELIEF_ORGANIZATION") {
       if (!user.organizationId) return NextResponse.json({ error: "No organization associated" }, { status: 403 });
-      where.OR = [
+      where.AND = [...(where.AND || []), { OR: [
         { incident: { reportedBy: { organizationId: user.organizationId } } },
         { allocations: { some: { organizationId: user.organizationId } } },
-      ];
+      ] }];
     }
 
-    const [data, total] = await Promise.all([
-      prisma.emergencyRequest.findMany({
-        where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: [{ priorityScore: "desc" }, { createdAt: "desc" }],
-        include: {
-          incident: { select: { id: true, title: true, category: true, severity: true } },
-          allocations: {
-            where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
-            include: { resource: true, organization: true },
+    if (search) {
+      where.AND = [...(where.AND || []), { OR: [
+        { description: { contains: search, mode: "insensitive" } },
+        { location: { contains: search, mode: "insensitive" } },
+        { incident: { title: { contains: search, mode: "insensitive" } } },
+        { incident: { location: { contains: search, mode: "insensitive" } } },
+      ] }];
+    }
+
+    const candidates = await prisma.emergencyRequest.findMany({
+      where,
+      select: {
+        id: true, priority: true, affectedPeople: true, createdAt: true,
+        incident: {
+          select: {
+            history: {
+              where: { action: "location_risk_assessed" },
+              orderBy: { timestamp: "desc" },
+              take: 1,
+              select: { newValue: true },
+            },
           },
         },
+      },
+    });
+    const ranked = candidates.map((request) => ({
+      id: request.id,
+      score: calculateRequestPriority({
+        priority: request.priority,
+        affectedPeople: request.affectedPeople,
+        locationRiskScore: getLocationRiskScore(request.incident.history),
+        createdAt: request.createdAt,
       }),
-      prisma.emergencyRequest.count({ where }),
-    ]);
+      createdAt: request.createdAt,
+    })).sort((a, b) => b.score - a.score || a.createdAt.getTime() - b.createdAt.getTime());
+    const total = ranked.length;
+    const pageItems = ranked.slice((page - 1) * pageSize, page * pageSize);
+    const pageData = pageItems.length ? await prisma.emergencyRequest.findMany({
+      where: { id: { in: pageItems.map((item) => item.id) } },
+      include: {
+        incident: { select: { id: true, title: true, category: true, severity: true, location: true } },
+        allocations: {
+          where: user.role === "RELIEF_ORGANIZATION" ? { organizationId: user.organizationId! } : {},
+          include: { resource: true, organization: true },
+        },
+      },
+    }) : [];
+    const dataById = new Map(pageData.map((request) => [request.id, request]));
+    const data = pageItems.flatMap((item) => {
+      const request = dataById.get(item.id);
+      return request ? [{ ...request, priorityScore: item.score }] : [];
+    });
 
     return NextResponse.json({ data, total, page, pageSize });
   } catch (err: any) {
@@ -70,7 +108,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request details" }, { status: 400 });
     }
 
-    const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
+    const incident = await prisma.incident.findUnique({
+      where: { id: incidentId },
+      include: {
+        reportedBy: { select: { organizationId: true } },
+        history: {
+          where: { action: "location_risk_assessed" },
+          orderBy: { timestamp: "desc" },
+          take: 1,
+          select: { newValue: true },
+        },
+      },
+    });
     if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
@@ -79,12 +128,17 @@ export async function POST(req: Request) {
     if (!isAdmin && !isCoordinator && !isOrg) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    if (isOrg && (!user.organizationId || incident.reportedById !== user.id)) {
-      return NextResponse.json({ error: "Organizations may create requests only for their own reported incidents" }, { status: 403 });
+    if (isOrg && (!user.organizationId || incident.reportedBy.organizationId !== user.organizationId)) {
+      return NextResponse.json({ error: "Organizations may create requests only for incidents reported by their organization" }, { status: 403 });
     }
 
-    const pWeight = { LOW: 1, MEDIUM: 3, HIGH: 6, CRITICAL: 10 }[priority as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"] || 3;
-    const priorityScore = Math.round(pWeight * 10 + Math.log10(Math.max(affectedPeople || 1, 1)) * 10);
+    const createdAt = new Date();
+    const priorityScore = calculateRequestPriority({
+      priority,
+      affectedPeople,
+      locationRiskScore: getLocationRiskScore(incident.history),
+      createdAt,
+    }, createdAt);
 
     const duplicate = await prisma.emergencyRequest.findFirst({
       where: { incidentId, type, status: { not: "REJECTED" } },
@@ -105,6 +159,7 @@ export async function POST(req: Request) {
           description: description || null,
           status: duplicate ? "REJECTED" : "PENDING",
           duplicateFlag: !!duplicate,
+          createdAt,
         },
       });
       await tx.activityLog.create({

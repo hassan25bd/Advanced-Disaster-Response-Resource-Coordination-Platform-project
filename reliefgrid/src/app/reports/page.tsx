@@ -110,6 +110,10 @@ export default function ReportsPage() {
             <MetricRow label="Available Resources" value={stats?.availableResources ?? 0} />
             <MetricRow label="Active Shelters" value={stats?.activeShelters ?? 0} />
             <MetricRow label="Available Volunteers" value={stats?.volunteerAvailability ?? 0} />
+            <MetricRow
+              label="Average Response Time"
+              value={stats?.avgResponseTime === null ? "No data" : `${stats?.avgResponseTime ?? 0} min`}
+            />
           </CardContent>
         </Card>
       </div>
@@ -117,11 +121,11 @@ export default function ReportsPage() {
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: number }) {
+function MetricRow({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="flex justify-between py-2 border-b border-slate-100">
       <span className="text-sm text-slate-600">{label}</span>
-      <span className="text-sm font-medium text-slate-900">{value.toLocaleString()}</span>
+      <span className="text-sm font-medium text-slate-900">{typeof value === "number" ? value.toLocaleString() : value}</span>
     </div>
   );
 }

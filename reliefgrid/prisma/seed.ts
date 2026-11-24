@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import bcrypt from "bcryptjs";
+import { calculateIncidentPriority, calculateRequestPriority } from "../src/lib/priority";
 
 const connectionString = process.env.DATABASE_URL!;
 const adapter = new PrismaPg({ connectionString });
@@ -133,6 +134,7 @@ async function main() {
 
   // 50 Incidents
   const incidents: any[] = [];
+  const locationRiskByIncidentId = new Map<string, number>();
   const now = new Date();
   const categories = Object.values({ FLOOD: "FLOOD", CYCLONE: "CYCLONE", EARTHQUAKE: "EARTHQUAKE", FIRE: "FIRE", LANDSLIDE: "LANDSLIDE", INFRASTRUCTURE_FAILURE: "INFRASTRUCTURE_FAILURE" });
   const severities = ["LOW","MEDIUM","HIGH","CRITICAL"];
@@ -144,13 +146,13 @@ async function main() {
     const description = rand(INCIDENT_DESCRIPTIONS[category as keyof typeof INCIDENT_DESCRIPTIONS]);
     const city = pickCity();
     const affected = randInt(10, 5000);
-    const sevWeight = { LOW: 1, MEDIUM: 3, HIGH: 6, CRITICAL: 10 }[severity];
-    const priorityScore = Math.round(sevWeight * 10 + Math.log10(Math.max(affected, 1)) * 15 + randInt(0, 20));
     const status = rand(statuses) as any;
     const reportedBy = users[randInt(0, users.length - 1)];
     const coordinator = status !== "REPORTED" ? users[randInt(0, users.length - 1)] : null;
     const daysAgo = randInt(0, 30);
     const createdAt = new Date(now.getTime() - daysAgo * 86400000 - randInt(0, 23) * 3600000);
+    const locationRiskScore = randInt(1, 5);
+    const priorityScore = calculateIncidentPriority({ severity, affectedPopulation: affected, locationRiskScore, createdAt }, createdAt);
     const incident = await prisma.incident.create({
       data: {
         title,
@@ -170,8 +172,12 @@ async function main() {
         updatedAt: createdAt,
       },
     });
+    locationRiskByIncidentId.set(incident.id, locationRiskScore);
     await prisma.incidentHistory.create({
       data: { incidentId: incident.id, action: "incident_reported", previousValue: null, newValue: status, changedById: reportedBy.id, timestamp: createdAt },
+    });
+    await prisma.incidentHistory.create({
+      data: { incidentId: incident.id, action: "location_risk_assessed", previousValue: null, newValue: String(locationRiskScore), changedById: users.find(u => u.role === "SYSTEM_ADMIN")!.id, timestamp: createdAt },
     });
     if (coordinator) {
       await prisma.incidentHistory.create({
@@ -227,11 +233,15 @@ async function main() {
     const type = rand(requestTypes) as any;
     const priority = rand(reqPriorities) as any;
     const affected = randInt(1, 500);
-    const pWeight = { LOW: 1, MEDIUM: 3, HIGH: 6, CRITICAL: 10 }[priority];
-    const priorityScore = Math.round(pWeight * 10 + Math.log10(Math.max(affected, 1)) * 10 + randInt(0, 20));
     const status = rand(reqStatuses) as any;
     const city = pickCity();
     const createdAt = new Date(now.getTime() - randInt(0, 30) * 86400000);
+    const priorityScore = calculateRequestPriority({
+      priority,
+      affectedPeople: affected,
+      locationRiskScore: locationRiskByIncidentId.get(incident.id) ?? 0,
+      createdAt,
+    }, createdAt);
     const request = await prisma.emergencyRequest.create({
       data: {
         incidentId: incident.id,

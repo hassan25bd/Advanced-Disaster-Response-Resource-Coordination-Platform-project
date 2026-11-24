@@ -54,6 +54,7 @@ export default function IncidentDetailsPage() {
               <div><p className="text-xs text-slate-500 uppercase">Severity</p><Badge className={SEVERITY_BADGE[incident.severity] || ""}>{statusLabel(incident.severity)}</Badge></div>
               <div><p className="text-xs text-slate-500 uppercase">Status</p><Badge className={STATUS_BADGE[incident.status] || ""}>{statusLabel(incident.status)}</Badge></div>
               <div><p className="text-xs text-slate-500 uppercase">Priority Score</p><p className="font-medium">{incident.priorityScore}</p></div>
+              <div><p className="text-xs text-slate-500 uppercase">Location Risk (0–5)</p><p className="font-medium">{incident.locationRiskScore === 0 ? "Unassessed" : incident.locationRiskScore}</p></div>
               <div><p className="text-xs text-slate-500 uppercase">Affected Population</p><p className="font-medium">{incident.affectedPopulation.toLocaleString()}</p></div>
               <div><p className="text-xs text-slate-500 uppercase">Coordinator</p><p className="font-medium">{incident.coordinator?.name || "Not assigned"}</p></div>
             </div>

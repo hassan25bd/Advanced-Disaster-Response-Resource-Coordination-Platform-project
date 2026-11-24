@@ -14,7 +14,7 @@ export default function CreateIncidentPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     title: "", description: "", category: "FLOOD", location: "", latitude: "", longitude: "",
-    severity: "MEDIUM", affectedPopulation: "", imageUrl: "",
+    severity: "MEDIUM", affectedPopulation: "", locationRiskScore: "0", imageUrl: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,6 +32,7 @@ export default function CreateIncidentPage() {
           latitude: parseFloat(form.latitude) || 0,
           longitude: parseFloat(form.longitude) || 0,
           affectedPopulation: parseInt(form.affectedPopulation) || 0,
+          locationRiskScore: Number(form.locationRiskScore),
         }),
       });
       router.push("/incidents");
@@ -101,6 +102,14 @@ export default function CreateIncidentPage() {
               <label className="block text-sm font-medium text-slate-700 mb-1">Affected Population</label>
               <Input type="number" value={form.affectedPopulation} onChange={(e) => setForm({ ...form, affectedPopulation: e.target.value })} />
             </div>
+            {["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user.role) && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Location Risk (0 = unassessed, 5 = extreme)</label>
+                <Select value={form.locationRiskScore} onChange={(e) => setForm({ ...form, locationRiskScore: e.target.value })}>
+                  {[0, 1, 2, 3, 4, 5].map((score) => <option key={score} value={score}>{score}</option>)}
+                </Select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Image URL</label>
               <Input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." />

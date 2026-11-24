@@ -12,7 +12,7 @@ Auth: NextAuth.js JWT session cookie (`next-auth.session-token`). All `/api/*` r
 
 ## Common Query Parameters
 
-List endpoints support: `page` (default 1), `pageSize` (default 10, max 100), `search`.
+List endpoints support: `page` (default 1), `pageSize` (default 10, max 100), `search` where available. Incident search covers title, description, and location; request search covers request description/location and the related incident title/location.
 
 Responses are shaped `{ data, total, page, pageSize }`.
 
@@ -31,14 +31,14 @@ Responses are shaped `{ data, total, page, pageSize }`.
 - `PATCH /api/users/[id]` — update (Admin/Coordinator scope)
 
 ### Incidents
-- `GET /api/incidents` — list, sorted by priorityScore desc
-- `POST /api/incidents` — create
+- `GET /api/incidents` — list, ranked by calculated priority score (severity, affected population, coordinator-assessed location risk, and age); paginated and searchable
+- `POST /api/incidents` — create; coordinators/admins may provide `locationRiskScore` from 0 (unassessed) to 5 (extreme)
 - `GET /api/incidents/[id]` — detail with history, requests, tasks
-- `PATCH /api/incidents/[id]` — update (tracked in IncidentHistory)
+- `PATCH /api/incidents/[id]` — update (tracked in IncidentHistory); only coordinators/admins may change status, severity, affected population, coordinator, or location risk. Priority scores are server-calculated.
 - `DELETE /api/incidents/[id]` — delete (System Admin)
 
 ### Emergency Requests
-- `GET /api/requests` — list, sorted by priorityScore desc
+- `GET /api/requests` — list, ranked by calculated priority score (urgency, affected people, related incident location risk, and age); paginated and searchable
 - `POST /api/requests` — create (duplicate detection → REJECTED)
 - `GET /api/requests/[id]` — detail
 - `PATCH /api/requests/[id]` — update priority/status (audit logged)
@@ -75,7 +75,7 @@ Responses are shaped `{ data, total, page, pageSize }`.
 - `PATCH /api/notifications/[id]` — mark read
 
 ### Analytics
-- `GET /api/analytics` — dashboard metrics: active incidents, affected people, pending requests, available resources, active shelters, available volunteers, category distribution, request trends, resource distribution.
+- `GET /api/analytics` — dashboard metrics: active incidents, affected people, pending requests, available resources, active shelters, available volunteers, average time to first verification/response in minutes, category distribution, daily request trends, and resource distribution. Relief-organization metrics are scoped to that organization where applicable.
 
 ## Error Responses
 

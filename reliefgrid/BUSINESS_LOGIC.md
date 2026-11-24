@@ -26,8 +26,9 @@ The rules below are the intended behavior. Some remain incomplete; see Implement
 
 ### Emergency Prioritization
 1. Incidents and requests are sorted by `priorityScore` descending.
-2. Requests receive an initial score based on priority and affected people. Incident scoring and subsequent recalculation are not yet implemented.
-3. Priority changes are recorded in `IncidentHistory` / `ActivityLog`.
+2. Incident scores consider severity, affected population, coordinator-assessed location risk (0–5), and elapsed time. Request scores consider urgency, affected people, the related incident's location risk, and elapsed time. Aging is capped so it cannot overwhelm severity or urgency.
+3. Scores are recalculated by the server for list ranking; client-supplied scores are rejected. Equal scores are ordered oldest-first.
+4. Priority and location-risk changes are recorded in `IncidentHistory` / `ActivityLog`.
 
 ### Volunteer Management
 1. Volunteers can only update tasks where `volunteerId === user.id`.
@@ -35,7 +36,7 @@ The rules below are the intended behavior. Some remain incomplete; see Implement
 3. Task fields and activity logs are stored, but report revisions are not retained as immutable history.
 
 ### Organization Security
-1. Some organization list and update operations filter by `organizationId`; this is not consistently enforced across all endpoints.
+1. Organization-facing incident, request, resource, and analytics queries are filtered by the authenticated organization where applicable; incident detail access is checked server-side.
 2. System Admins see all organizations.
 3. Emergency Coordinators manage authorized emergency operations.
 
@@ -58,7 +59,7 @@ Development seed accounts use password `ReliefGrid@2026` by default. Production 
 ## Implementation Gaps
 
 - Several create/detail links lead to pages that have not been implemented.
-- Incident and request CSV exports are available; PDF exports and real-time notifications and updates are not implemented.
-- Priority scoring does not yet include all required factors, and response-time analytics are not calculated.
-- Organization isolation and inventory/history enforcement need a complete server-side audit before operational use.
+- Incident and request CSV exports are available; PDF exports and push-based real-time notifications are not implemented. Dashboard and incident/request lists refresh every 15 seconds while open.
+- Response-time analytics measure elapsed minutes from incident report to its first recorded VERIFIED, IN_PROGRESS, or RESOLVED transition; incidents without a recorded transition are excluded.
+- Organization isolation and inventory/history enforcement still need a full server-side audit before operational use.
 - The seed script creates sample data only when explicitly run; a new deployment starts empty.

@@ -27,7 +27,7 @@ export default function RequestsPage() {
   useEffect(() => {
     let active = true;
     async function load() {
-      setLoading(true);
+      if (active && !hasLoaded) setLoading(true);
       setError("");
       const params = new URLSearchParams({ page: String(page) });
       if (filters.search) params.set("search", filters.search);
@@ -43,11 +43,19 @@ export default function RequestsPage() {
       } catch {
         if (active) setError("Unable to load requests. Please try again.");
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          hasLoaded = true;
+        }
       }
     }
+    let hasLoaded = false;
     load();
-    return () => { active = false; };
+    const refreshTimer = window.setInterval(load, 15000);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+    };
   }, [filters, page]);
 
   const types = ["FOOD", "WATER", "MEDICAL", "SHELTER", "RESCUE", "TRANSPORTATION"];
@@ -69,7 +77,7 @@ export default function RequestsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Input placeholder="Search requests..." value={filters.search} onChange={(e) => { setPage(1); setFilters({ ...filters, search: e.target.value }); }} />
+        <Input placeholder="Search request, incident, or location..." value={filters.search} onChange={(e) => { setPage(1); setFilters({ ...filters, search: e.target.value }); }} />
         <Select value={filters.type} onChange={(e) => { setPage(1); setFilters({ ...filters, type: e.target.value }); }}>
           <option value="">All Types</option>
           {types.map((t) => <option key={t} value={t}>{statusLabel(t)}</option>)}

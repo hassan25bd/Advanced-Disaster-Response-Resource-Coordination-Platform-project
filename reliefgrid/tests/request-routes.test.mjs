@@ -7,6 +7,11 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
+const priorityExports = {};
+const prioritySource = fs.readFileSync(path.join(directory, "..", "src", "lib", "priority.ts"), "utf8");
+vm.runInNewContext(ts.transpileModule(prioritySource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText, { exports: priorityExports, module: { exports: priorityExports } });
 
 function loadRoute(relativePath, prisma, user) {
   const source = fs.readFileSync(path.join(directory, "..", "src", "app", "api", ...relativePath), "utf8");
@@ -16,6 +21,7 @@ function loadRoute(relativePath, prisma, user) {
     "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
     "@/lib/api-auth": { requireAuth: async () => user, requireRole: async () => user },
     "@/lib/prisma": { default: prisma },
+    "@/lib/priority": priorityExports,
   };
   vm.runInNewContext(js, {
     exports,
@@ -35,8 +41,11 @@ const payload = {
 };
 const post = (body) => new Request("http://localhost/api/requests", { method: "POST", body: JSON.stringify(body) });
 
-test("request creation validates and confines organizations, and uses incident coordinates", async () => {
-  let incident = { reportedById: user.id, latitude: 23, longitude: 90 };
+test("request creation validates and confines organizations, uses incident coordinates, and applies location risk", async () => {
+  let incident = {
+    reportedBy: { organizationId: user.organizationId }, latitude: 23, longitude: 90,
+    history: [{ newValue: "4" }],
+  };
   let created;
   const prisma = {
     incident: { findUnique: async () => incident },
@@ -48,26 +57,33 @@ test("request creation validates and confines organizations, and uses incident c
   };
   const route = loadRoute(["requests", "route.ts"], prisma, user);
   assert.equal((await route.POST(post({ ...payload, quantity: -1 }))).status, 400);
-  incident = { ...incident, reportedById: "other-user" };
+  incident = { ...incident, reportedBy: { organizationId: "org-2" } };
   assert.equal((await route.POST(post(payload))).status, 403);
-  incident = { ...incident, reportedById: user.id };
+  incident = { ...incident, reportedBy: { organizationId: user.organizationId } };
   assert.equal((await route.POST(post(payload))).status, 201);
   assert.equal(created.latitude, 23);
   assert.equal(created.longitude, 90);
   assert.equal(created.status, "PENDING");
+  assert.ok(created.priorityScore >= 65);
 });
 
 test("organization request listing restricts requests and allocation details", async () => {
-  let query;
+  const queries = [];
   const prisma = { emergencyRequest: {
-    findMany: async (args) => { query = args; return []; },
-    count: async () => 0,
+    findMany: async (args) => {
+      queries.push(args);
+      return args.select ? [{
+        id: "request-1", priority: "HIGH", affectedPeople: 12, createdAt: new Date(),
+        incident: { history: [{ newValue: "2" }] },
+      }] : [];
+    },
+    count: async () => 1,
   } };
   const route = loadRoute(["requests", "route.ts"], prisma, user);
   assert.equal((await route.GET(new Request("http://localhost/api/requests"))).status, 200);
-  assert.equal(query.where.OR[0].incident.reportedBy.organizationId, "org-1");
-  assert.equal(query.where.OR[1].allocations.some.organizationId, "org-1");
-  assert.equal(query.include.allocations.where.organizationId, "org-1");
+  assert.equal(queries[0].where.AND[0].OR[0].incident.reportedBy.organizationId, "org-1");
+  assert.equal(queries[0].where.AND[0].OR[1].allocations.some.organizationId, "org-1");
+  assert.equal(queries[1].include.allocations.where.organizationId, "org-1");
 });
 
 test("request verification does not create history entries for omitted fields", async () => {
