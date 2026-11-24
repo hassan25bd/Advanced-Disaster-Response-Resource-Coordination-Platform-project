@@ -95,7 +95,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Field photos must be a list of URLs" }, { status: 400 });
     }
     if (fieldPhotos !== undefined && fieldPhotos.some((photo: string) =>
-      photo.length > 1_100_000 || (!photo.startsWith("data:image/") && !photo.startsWith("https://"))
+      photo.length > 1_100_000 ||
+      (!/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(photo) && !photo.startsWith("https://"))
     )) {
       return NextResponse.json({ error: "Each field photo must be an image data URL or HTTPS URL under 1.1 MB" }, { status: 400 });
     }

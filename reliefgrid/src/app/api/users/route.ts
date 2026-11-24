@@ -11,11 +11,24 @@ export async function GET(req: Request) {
     const search = searchParams.get("search") || "";
     const role = searchParams.get("role") || undefined;
     const organizationId = searchParams.get("organizationId") || undefined;
+    const availabilityStatus = searchParams.get("availabilityStatus") || undefined;
+    const isActive = searchParams.get("isActive");
+    const roles = ["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR", "RELIEF_ORGANIZATION", "VOLUNTEER", "SHELTER_MANAGER"];
+    const availabilityStatuses = ["AVAILABLE", "BUSY", "OFF_DUTY"];
+    if ((role && !roles.includes(role)) ||
+        (availabilityStatus && !availabilityStatuses.includes(availabilityStatus))) {
+      return NextResponse.json({ error: "Invalid user filter" }, { status: 400 });
+    }
 
     const isAdmin = user.role === "SYSTEM_ADMIN";
     const where: any = {
-      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+      ...(search ? { OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ] } : {}),
       ...(role ? { role } : {}),
+      ...(availabilityStatus ? { availabilityStatus } : {}),
+      ...(isActive === "true" || isActive === "false" ? { isActive: isActive === "true" } : {}),
     };
 
     if (isAdmin) {

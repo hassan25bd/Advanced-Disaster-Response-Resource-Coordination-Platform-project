@@ -3,8 +3,8 @@ export const MAX_TASK_FIELD_PHOTOS = 3;
 
 export function readImageFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith("image/")) {
-      reject(new Error(`${file.name} is not an image.`));
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      reject(new Error(`${file.name} must be a JPEG, PNG, WebP, or GIF image.`));
       return;
     }
     if (file.size > MAX_IMAGE_FILE_BYTES) {

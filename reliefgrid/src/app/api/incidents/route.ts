@@ -95,7 +95,7 @@ export async function POST(req: Request) {
         (locationRiskScore !== undefined && (!Number.isInteger(locationRiskScore) || locationRiskScore < 0 || locationRiskScore > 5)) ||
         (imageUrl !== undefined && imageUrl !== null && imageUrl !== "" &&
           (typeof imageUrl !== "string" || imageUrl.length > 1_100_000 ||
-            (!imageUrl.startsWith("data:image/") && !imageUrl.startsWith("https://"))))) {
+            (!/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(imageUrl) && !imageUrl.startsWith("https://"))))) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
     if (locationRiskScore !== undefined && !["SYSTEM_ADMIN", "EMERGENCY_COORDINATOR"].includes(user.role)) {
